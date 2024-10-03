@@ -22,8 +22,8 @@ class PromptrieverWrapper(RepLLaMAWrapper):
         super().__init__(*args, **kwargs)
 
     def encode_queries(self, queries: list[str], **kwargs: Any) -> np.ndarray:
-        queries = [f"query:  {query}" for query in queries]
         if "instruction" in kwargs:
+            queries = [f"query:  {query}" for query in queries]
             end_punct_list = [
                 "?" if query.strip()[-1] not in ["?", ".", "!"] else ""
                 for query in queries
@@ -32,6 +32,27 @@ class PromptrieverWrapper(RepLLaMAWrapper):
                 f"{query}{end_punct_list[i]} {kwargs['instruction']}"
                 for i, query in enumerate(queries)
             ]
+            return self.encode(queries, **kwargs)
+        # for InstructIR
+        elif "[SEP]" in queries[0]:
+            # for InstructIR
+            tmp_queries = []
+            for query in queries:
+                assert "[SEP]" in query
+                query_splits = query.split("[SEP]")
+                assert len(query_splits) == 2
+                # instruction is following query
+                tmp_queries.append(f"query:  {query_splits[1]} {query_splits[0]}")
+        # for PIR
+        elif ":" in queries[0]:
+            tmp_queries = []
+            for query in queries:
+                query_splits = query.split(":")
+                assert len(query_splits) == 2
+                tmp_queries.append(f"query:  {query_splits[1]} {query_splits[0]}")
+        else:
+            tmp_queries = [f"query:  {query}" for query in queries]
+                
         return self.encode(queries, **kwargs)
 
 
