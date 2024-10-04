@@ -296,6 +296,13 @@ TASKNAME2INSTRUCTIONS = {
         "",
     ),
     "RiaNewsRetrieval": ("Given a news title, retrieve relevant news article", ""),
+    "AGNewsInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "AllsidesInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "AmbigQAINformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "ExFeverInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "PerspectrumInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "StoryInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "InstructIR": ("Given a web search query, retrieve relevant passages that answer the query", ""),
 }
 
 
