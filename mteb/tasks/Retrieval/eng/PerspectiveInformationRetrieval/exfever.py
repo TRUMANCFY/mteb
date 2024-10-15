@@ -20,8 +20,8 @@ class ExFeverInformationRetrieval(AbsTaskRetrieval):
             "ExFever"
         ),
         dataset={
-            "path": "RAR-b/alphanli",
-            "revision": "303f40ef3d50918d3dc43577d33f2f7344ad72c1",
+            "path": "trumancai/perspective-information-retrieval-exfever",
+            "revision": "b0884af3c470911cdaae056b88482bba629df4f7",
             "trust_remote_code": True,
         }, # just for placeholder
         type="Retrieval",
@@ -54,71 +54,3 @@ class ExFeverInformationRetrieval(AbsTaskRetrieval):
             },
         },
     )
-
-    def load_data(self, **kwargs):
-        if self.data_loaded:
-            return
-        self.corpus, self.queries, self.relevant_docs = {}, {}, {}
-
-        for split in kwargs.get("eval_splits", self.metadata_dict["eval_splits"]):
-            corpus, queries, qrels = self._load_data_for_split()
-            self.corpus[split], self.queries[split], self.relevant_docs[split] = (
-                corpus,
-                queries,
-                qrels,
-            )
-
-        self.data_loaded = True
-
-    def _load_data_for_split(self):
-        corpus, queries, qrels = {}, {}, {}
-
-        root_dir = os.getenv("ROOT_DIR", "/storage/ukp/work/cai_e/instruction_pir/retrieval")
-        data_dir = os.path.join(root_dir, "data/pir/exfever")
-        
-        corpus_file = os.path.join(data_dir, "corpus.jsonl")
-        query_file = os.path.join(data_dir, "queries.jsonl")
-        qrels_file = os.path.join(data_dir, 'qrels.tsv')
-
-        corpus_lines = self._readjsonls(corpus_file)
-        query_lines = self._readjsonls(query_file)
-
-        for _line in corpus_lines:
-            _id = _line['id']
-            _title, _text = _line['contents'].split('\n')
-            corpus[_id] = {
-                'id': _id,
-                "title": _title,
-                "text": _text,
-            }
-        
-        for _line in query_lines:
-            queries[_line['id']] = _line['title']
-
-        qrels = self._readqrels(qrels_file)
-              
-        return corpus, queries, qrels
-    
-    @classmethod
-    def _readjsonls(cls, file):
-        with open(file, 'r') as f:
-            return [json.loads(l) for l in f.readlines()]
-        
-    @classmethod
-    def _readqrels(cls, qrels_file):
-        reader = csv.reader(open(qrels_file, encoding="utf-8"),
-                            delimiter='\t', quoting=csv.QUOTE_MINIMAL)
-        
-        next(reader)
-        
-        qrels = {}
-        
-        for _id, _row in enumerate(reader):
-            query_id, corpus_id, score = _row[0], _row[1], int(float(_row[2]))
-            
-            if query_id not in qrels:
-                qrels[query_id] = {corpus_id: score}
-            else:
-                qrels[query_id][corpus_id] = score
-                
-        return qrels
