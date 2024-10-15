@@ -4,6 +4,8 @@ from .ambigqa import *
 from .exfever import *
 from .perspectrum import *
 from .story import *
+from .exfever_binary import *
+from .perspectrum_binary import *
 
 """Abstract class for retrieval experiments.
 
