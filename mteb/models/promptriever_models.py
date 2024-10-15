@@ -42,14 +42,14 @@ class PromptrieverWrapper(RepLLaMAWrapper):
                 query_splits = query.split("[SEP]")
                 assert len(query_splits) == 2
                 # instruction is following query
-                tmp_queries.append(f"query:  {query_splits[1]} {query_splits[0]}")
+                tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
         # for PIR
         elif ":" in queries[0]:
             tmp_queries = []
             for query in queries:
                 query_splits = query.split(":")
                 assert len(query_splits) == 2
-                tmp_queries.append(f"query:  {query_splits[1]} {query_splits[0]}")
+                tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
         else:
             tmp_queries = [f"query:  {query}" for query in queries]
                 

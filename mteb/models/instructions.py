@@ -300,7 +300,9 @@ TASKNAME2INSTRUCTIONS = {
     "AllsidesInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
     "AmbigQAINformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
     "ExFeverInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "ExFeverBinaryInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
     "PerspectrumInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
+    "PerspectrumBinaryInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
     "StoryInformationRetrieval": ("Given a web search query, retrieve relevant passages that answer the query", ""),
     "InstructIR": ("Given a web search query, retrieve relevant passages that answer the query", ""),
 }
