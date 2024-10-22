@@ -48,8 +48,10 @@ class PromptrieverWrapper(RepLLaMAWrapper):
             tmp_queries = []
             for query in queries:
                 query_splits = query.split(":")
-                assert len(query_splits) == 2
-                tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
+                assert len(query_splits) > 1
+                # tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
+                ' '.join(query_splits[1:])
+                tmp_queries.append(f"query:  {' '.join(query_splits[1:]).strip()} {query_splits[0].strip()}")
         else:
             tmp_queries = [f"query:  {query}" for query in queries]
                 
@@ -67,7 +69,8 @@ def _loader(wrapper: type[PromptrieverWrapper], **kwargs) -> Callable[..., Encod
 
 promptriever_llama2 = ModelMeta(
     loader=_loader(
-        RepLLaMAWrapper,
+        PromptrieverWrapper,
+        # RepLLaMAWrapper,
         base_model_name_or_path="meta-llama/Llama-2-7b-hf",
         peft_model_name_or_path="samaya-ai/promptriever-llama2-7b-v1",
         device_map="auto",
@@ -82,7 +85,8 @@ promptriever_llama2 = ModelMeta(
 
 promptriever_llama3 = ModelMeta(
     loader=_loader(
-        RepLLaMAWrapper,
+        # RepLLaMAWrapper,
+        PromptrieverWrapper,
         base_model_name_or_path="meta-llama/Meta-Llama-3.1-8B",
         peft_model_name_or_path="samaya-ai/promptriever-llama3.1-8b-v1",
         device_map="auto",
@@ -98,7 +102,8 @@ promptriever_llama3 = ModelMeta(
 
 promptriever_llama3_instruct = ModelMeta(
     loader=_loader(
-        RepLLaMAWrapper,
+        # RepLLaMAWrapper,
+        PromptrieverWrapper,
         base_model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct",
         peft_model_name_or_path="samaya-ai/promptriever-llama3.1-8b-instruct-v1",
         device_map="auto",
@@ -113,7 +118,8 @@ promptriever_llama3_instruct = ModelMeta(
 
 promptriever_mistral_v1 = ModelMeta(
     loader=_loader(
-        RepLLaMAWrapper,
+        # RepLLaMAWrapper,
+        PromptrieverWrapper,
         base_model_name_or_path="mistralai/Mistral-7B-v0.1",
         peft_model_name_or_path="samaya-ai/promptriever-mistral-v0.1-7b-v1",
         device_map="auto",
