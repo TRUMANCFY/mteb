@@ -34,7 +34,7 @@ class PromptrieverWrapper(RepLLaMAWrapper):
             ]
             return self.encode(queries, **kwargs)
         # for InstructIR
-        elif "[SEP]" in queries[0]:
+        elif "[SEP]" in queries[0] and "[SEP]" in queries[-1]:
             # for InstructIR
             tmp_queries = []
             for query in queries:
@@ -43,17 +43,18 @@ class PromptrieverWrapper(RepLLaMAWrapper):
                 assert len(query_splits) == 2
                 # instruction is following query
                 tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
+            queries = tmp_queries
         # for PIR
-        elif ":" in queries[0]:
+        elif ":" in queries[0] and ":" in queries[-1]:
             tmp_queries = []
             for query in queries:
                 query_splits = query.split(":")
                 assert len(query_splits) > 1
-                # tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
-                ' '.join(query_splits[1:])
+                # in PIR, the first part is the instruction, and the second part is the query
                 tmp_queries.append(f"query:  {' '.join(query_splits[1:]).strip()} {query_splits[0].strip()}")
+            queries = tmp_queries
         else:
-            tmp_queries = [f"query:  {query}" for query in queries]
+            queries = [f"query:  {query}" for query in queries]
                 
         return self.encode(queries, **kwargs)
 
