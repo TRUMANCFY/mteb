@@ -143,3 +143,4 @@ from .zho.LeCaRDv2Retrieval import *
 from .eng.PerspectiveInformationRetrieval import *
 from .eng.InstructIR import *
 from .eng.MsMarcoWInstructionRetrieval import *
+from .eng.MsMarcoWInstructionPartialRetrieval import *

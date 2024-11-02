@@ -6,14 +6,14 @@ from ....abstasks.AbsTaskRetrieval import AbsTaskRetrieval
 
 from datasets import load_dataset
 
-class MsmarcoWInstructionRetrieval(AbsTaskRetrieval):
+class MsmarcoWInstructionPartialRetrieval(AbsTaskRetrieval):
     metadata = TaskMetadata(
-        name="MsmarcoWInstructionRetrieval",
-        description="MsmarcoWInstructionRetrieval",
+        name="MsmarcoWInstructionPartialRetrieval",
+        description="MsmarcoWInstructionPartialRetrieval",
         reference="https://arxiv.org/abs/2409.11136",
         dataset={
-            "path": "trumancai/msmarco-w-instruction",
-            "revision": "b1c058b8037cf599ade72749a8782b47d8a2cd14",
+            "path": "trumancai/msmarco-w-instruction-partial",
+            "revision": "97e875535d0336ccdf274d8520e51696e86597ac",
         },
         type="Retrieval",
         category="s2s",
@@ -41,7 +41,7 @@ class MsmarcoWInstructionRetrieval(AbsTaskRetrieval):
                 "test": {
                     "average_document_length": 61.293623801412586,
                     "average_query_length": 109.157956271219,
-                    "num_documents": 7907329,
+                    "num_documents": 2821385,
                     "num_queries": 489243,
                     "average_relevant_docs_per_query": 1.0,
                 }
