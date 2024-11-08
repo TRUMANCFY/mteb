@@ -13,7 +13,7 @@ class MsmarcoWInstructionPartialRetrieval(AbsTaskRetrieval):
         reference="https://arxiv.org/abs/2409.11136",
         dataset={
             "path": "trumancai/msmarco-w-instruction-partial",
-            "revision": "97e875535d0336ccdf274d8520e51696e86597ac",
+            "revision": "5217256a3f26991a5ccb2fbc8f503399a5775c58",
         },
         type="Retrieval",
         category="s2s",
@@ -41,8 +41,8 @@ class MsmarcoWInstructionPartialRetrieval(AbsTaskRetrieval):
                 "test": {
                     "average_document_length": 61.293623801412586,
                     "average_query_length": 109.157956271219,
-                    "num_documents": 2821385,
-                    "num_queries": 489243,
+                    "num_documents": 131274,
+                    "num_queries": 10000,
                     "average_relevant_docs_per_query": 1.0,
                 }
             },
