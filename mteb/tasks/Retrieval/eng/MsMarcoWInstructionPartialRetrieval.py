@@ -13,7 +13,7 @@ class MsmarcoWInstructionPartialRetrieval(AbsTaskRetrieval):
         reference="https://arxiv.org/abs/2409.11136",
         dataset={
             "path": "trumancai/msmarco-w-instruction-partial",
-            "revision": "5217256a3f26991a5ccb2fbc8f503399a5775c58",
+            "revision": "51c3fbf38b6d46e72fd20f7cc5a6a0787b200ff0",
         },
         type="Retrieval",
         category="s2s",
