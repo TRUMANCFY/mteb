@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal
 
 import numpy as np
 import torch
+import os
 
 from mteb.encoder_interface import Encoder
 from mteb.model_meta import ModelMeta
@@ -57,6 +58,52 @@ class PromptrieverWrapper(RepLLaMAWrapper):
             queries = [f"query:  {query}" for query in queries]
                 
         return self.encode(queries, **kwargs)
+
+
+# class PromptrieverWrapper(RepLLaMAWrapper):
+#     def __init__(self, *args, **kwargs):
+#         gpu_devices = list(range(torch.cuda.device_count()))
+#         os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_devices))
+#         super().__init__(*args, **kwargs)
+#         self.model = SentenceTransformer(model_name)
+
+
+#     def encode_queries(self, queries: list[str], **kwargs: Any) -> np.ndarray:
+#         if "instruction" in kwargs:
+#             queries = [f"query:  {query}" for query in queries]
+#             end_punct_list = [
+#                 "?" if query.strip()[-1] not in ["?", ".", "!"] else ""
+#                 for query in queries
+#             ]
+#             queries = [
+#                 f"{query}{end_punct_list[i]} {kwargs['instruction']}"
+#                 for i, query in enumerate(queries)
+#             ]
+#             return self.encode(queries, **kwargs)
+#         # for InstructIR
+#         elif "[SEP]" in queries[0] and "[SEP]" in queries[-1]:
+#             # for InstructIR
+#             tmp_queries = []
+#             for query in queries:
+#                 assert "[SEP]" in query
+#                 query_splits = query.split("[SEP]")
+#                 assert len(query_splits) == 2
+#                 # instruction is following query
+#                 tmp_queries.append(f"query:  {query_splits[1].strip()} {query_splits[0].strip()}")
+#             queries = tmp_queries
+#         # for PIR
+#         elif ":" in queries[0] and ":" in queries[-1]:
+#             tmp_queries = []
+#             for query in queries:
+#                 query_splits = query.split(":")
+#                 assert len(query_splits) > 1
+#                 # in PIR, the first part is the instruction, and the second part is the query
+#                 tmp_queries.append(f"query:  {' '.join(query_splits[1:]).strip()} {query_splits[0].strip()}")
+#             queries = tmp_queries
+#         else:
+#             queries = [f"query:  {query}" for query in queries]
+                
+#         return self.encode(queries, **kwargs)
 
 
 def _loader(wrapper: type[PromptrieverWrapper], **kwargs) -> Callable[..., Encoder]:
