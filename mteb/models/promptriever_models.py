@@ -5,7 +5,6 @@ from typing import Any, Callable, Literal
 
 import numpy as np
 import torch
-import os
 
 from mteb.encoder_interface import Encoder
 from mteb.model_meta import ModelMeta

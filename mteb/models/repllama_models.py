@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Literal, List
+import math
+from typing import Any, List, Dict, Union, Literal, Callable
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 import tqdm
 from transformers import AutoModel, AutoTokenizer
+from peft import PeftModel
+import torch.multiprocessing as mp
+import queue
 
 from mteb.encoder_interface import Encoder
 from mteb.model_meta import ModelMeta
@@ -18,52 +22,50 @@ logger = logging.getLogger(__name__)
 
 EncodeTypes = Literal["query", "passage"]
 
-
-from concurrent.futures import ThreadPoolExecutor
-
+logger = logging.getLogger(__name__)
 
 class RepLLaMAWrapper:
     def __init__(self, *args, **kwargs):
-        """
-        Initialize the Data Parallel RepLLaMA Wrapper.
+        # Check if multiple GPUs are available and start pool if so
+        self.pool = None
+        self.base_model_name_or_path = kwargs["base_model_name_or_path"]
+        self.peft_model_name_or_path = kwargs["peft_model_name_or_path"]
+        self.torch_dtype = kwargs["torch_dtype"]
+        self.device_map = kwargs.get("device_map", None)
 
-        Args:
-            kwargs: Arguments for model initialization.
-                - base_model_name_or_path (str): Path or name of the base model.
-                - peft_model_name_or_path (str): Path or name of the PEFT model.
-                - torch_dtype (torch.dtype): Data type for the model (e.g., torch.float16).
-        """
-        # Detect available GPUs
-        self.gpu_ids = list(range(torch.cuda.device_count()))
-        if not self.gpu_ids:
-            raise RuntimeError("No GPUs available for data parallel processing.")
-
-        # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(kwargs["base_model_name_or_path"])
-        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.tokenizer.padding_side = "right"
-
-        # Load model on each GPU
-        self.models = []
-        for gpu_id in self.gpu_ids:
-            model = AutoModel.from_pretrained(
-                kwargs["base_model_name_or_path"],
-                torch_dtype=kwargs.get("torch_dtype", torch.float16),
-                device_map=None,
+        num_gpus = torch.cuda.device_count()
+        if num_gpus > 1:
+            self.pool = self.start_multi_process_pool()
+            print("Multi-process pool started with devices: {}".format(
+                ", ".join([f"cuda:{i}" for i in range(num_gpus)])
+            ))
+        else:
+            # Load base model and PEFT adapter for single GPU use
+            self.base_model = AutoModel.from_pretrained(
+                self.base_model_name_or_path,
+                torch_dtype=self.torch_dtype,
+                device_map=self.device_map,
             )
-            model = PeftModel.from_pretrained(model, kwargs["peft_model_name_or_path"])
-            model = model.merge_and_unload().to(f"cuda:{gpu_id}")
-            self.models.append(model)
+            self.model = PeftModel.from_pretrained(self.base_model, self.peft_model_name_or_path)
+            self.model = self.model.merge_and_unload()
 
-        # Set max lengths
-        for model in self.models:
-            model.config.max_length = 512
-        self.tokenizer.model_max_length = 512
+            self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.padding_side = "right"
 
-    def create_batch_dict(self, input_texts):
-        max_length = self.models[0].config.max_length
-        batch_dict = self.tokenizer(
+            self.model.config.max_length = 512
+            self.tokenizer.model_max_length = 512
+
+    def __del__(self):
+        # When the object is being destroyed, if a pool exists, stop it
+        if self.pool is not None:
+            self.stop_multi_process_pool(self.pool)
+            self.pool = None
+
+    def create_batch_dict(self, tokenizer, input_texts):
+        max_length = self.model.config.max_length
+        batch_dict = tokenizer(
             input_texts,
             max_length=max_length - 1,
             return_token_type_ids=False,
@@ -72,116 +74,249 @@ class RepLLaMAWrapper:
             truncation=True,
         )
         batch_dict["input_ids"] = [
-            input_ids + [self.tokenizer.eos_token_id]
+            input_ids + [tokenizer.eos_token_id]
             for input_ids in batch_dict["input_ids"]
         ]
-        return self.tokenizer.pad(
+        return tokenizer.pad(
             batch_dict,
             padding=True,
             pad_to_multiple_of=8,
             return_attention_mask=True,
             return_tensors="pt",
         )
+
+    def encode(
+        self,
+        sentences: List[str],
+        *,
+        batch_size: int = 16,
+        **kwargs: Any,
+    ) -> np.ndarray:
+        """
+        If multiple GPUs are available and a pool has been started at init, it uses multi-process encoding.
+        Otherwise, uses single-process encoding.
+        """
+        if self.pool is not None:
+            # Multiple GPUs: use the already started multi-process pool
+            return self.encode_multi_process(sentences, self.pool, batch_size=batch_size)
+        else:
+            # Single GPU or CPU: single-process encoding
+            device = self.model.device
+            all_embeddings = []
+            for i in tqdm.tqdm(range(0, len(sentences), batch_size)):
+                batch_texts = sentences[i : i + batch_size]
+                batch_dict = self.create_batch_dict(self.tokenizer, batch_texts)
+                batch_dict = {key: value.to(device) for key, value in batch_dict.items()}
+
+                with torch.cuda.amp.autocast():
+                    with torch.no_grad():
+                        outputs = self.model(**batch_dict)
+                        last_hidden_state = outputs.last_hidden_state
+                        seq_lengths = batch_dict["attention_mask"].sum(dim=1) - 1
+                        current_batch_size = last_hidden_state.shape[0]
+                        reps = last_hidden_state[
+                            torch.arange(current_batch_size, device=last_hidden_state.device),
+                            seq_lengths,
+                        ]
+                        embeddings = F.normalize(reps, p=2, dim=-1)
+                        all_embeddings.append(embeddings.cpu().numpy())
+
+            return np.concatenate(all_embeddings, axis=0)
     
-    def encode_chunk(self, model, device, sentences, **kwargs):
-        """
-        Encode a chunk of sentences on a specific GPU.
-        """
-        batch_size = kwargs.get("batch_size", 16)
-        all_embeddings = []
+    @staticmethod
+    def _encode_multi_process_worker(
+        device: str,
+        base_model_name_or_path: str,
+        peft_model_name_or_path: str,
+        torch_dtype: torch.dtype,
+        input_queue: mp.Queue,
+        results_queue: mp.Queue,
+    ) -> None:
+        base_model = AutoModel.from_pretrained(
+            base_model_name_or_path,
+            torch_dtype=torch_dtype,
+            device_map=None,
+        ).to(device)
 
-        for i in range(0, len(sentences), batch_size):
-            batch_texts = sentences[i : i + batch_size]
+        model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
+        model = model.merge_and_unload()
+        model.config.max_length = 512
 
-            # Prepare batch inputs
-            batch_dict = self.create_batch_dict(batch_texts)
-            batch_dict = {
-                key: value.to(device) for key, value in batch_dict.items()
-            }
+        tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.padding_side = "right"
 
-            with torch.cuda.amp.autocast():
-                with torch.no_grad():
-                    outputs = model(**batch_dict)
-                    last_hidden_state = outputs.last_hidden_state
-                    sequence_lengths = batch_dict["attention_mask"].sum(dim=1) - 1
-                    batch_size = last_hidden_state.shape[0]
-                    reps = last_hidden_state[
-                        torch.arange(batch_size, device=last_hidden_state.device),
-                        sequence_lengths,
-                    ]
-                    embeddings = torch.nn.functional.normalize(reps, p=2, dim=-1)
-                    all_embeddings.append(embeddings.cpu().numpy())
+        def create_batch_dict(input_texts):
+            max_length = model.config.max_length
+            batch_dict = tokenizer(
+                input_texts,
+                max_length=max_length - 1,
+                return_token_type_ids=False,
+                return_attention_mask=False,
+                padding=False,
+                truncation=True,
+            )
+            batch_dict["input_ids"] = [
+                input_ids + [tokenizer.eos_token_id] for input_ids in batch_dict["input_ids"]
+            ]
+            return tokenizer.pad(
+                batch_dict,
+                padding=True,
+                pad_to_multiple_of=8,
+                return_attention_mask=True,
+                return_tensors="pt",
+            )
 
-        return np.concatenate(all_embeddings, axis=0)
+        while True:
+            try:
+                task = input_queue.get(timeout=1)
+                if task is None:
+                    break
 
+                chunk_id = task["chunk_id"]
+                sentences = task["sentences"]
+                batch_size = task["batch_size"]
+
+                all_embeddings = []
+                for start_idx in range(0, len(sentences), batch_size):
+                    batch_texts = sentences[start_idx : start_idx + batch_size]
+                    batch_dict = create_batch_dict(batch_texts)
+                    batch_dict = {k: v.to(device) for k, v in batch_dict.items()}
+
+                    with torch.cuda.amp.autocast():
+                        with torch.no_grad():
+                            outputs = model(**batch_dict)
+                            last_hidden_state = outputs.last_hidden_state
+                            seq_lengths = batch_dict["attention_mask"].sum(dim=1) - 1
+                            current_batch_size = last_hidden_state.shape[0]
+                            reps = last_hidden_state[
+                                torch.arange(current_batch_size, device=last_hidden_state.device),
+                                seq_lengths,
+                            ]
+                            embeddings = F.normalize(reps, p=2, dim=-1)
+                            all_embeddings.append(embeddings.cpu().numpy())
+
+                embeddings = np.concatenate(all_embeddings, axis=0)
+                results_queue.put([chunk_id, embeddings])
+            except queue.Empty:
+                break
+
+    def start_multi_process_pool(
+        self, target_devices: List[str] = None
+    ) -> Dict[str, Any]:
+        if target_devices is None:
+            if torch.cuda.is_available():
+                target_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+            else:
+                print("CUDA is not available. Starting 4 CPU workers")
+                target_devices = ["cpu"] * 4
+
+        print("Start multi-process pool on devices: {}".format(", ".join(map(str, target_devices))))
+
+        ctx = mp.get_context("spawn")
+        input_queue = ctx.Queue()
+        output_queue = ctx.Queue()
+        processes = []
+
+        for device_id in target_devices:
+            p = ctx.Process(
+                target=self._encode_multi_process_worker,
+                args=(
+                    device_id,
+                    self.base_model_name_or_path,
+                    self.peft_model_name_or_path,
+                    self.torch_dtype,
+                    input_queue,
+                    output_queue,
+                ),
+                daemon=True,
+            )
+            p.start()
+            processes.append(p)
+
+        return {"input": input_queue, "output": output_queue, "processes": processes}
+
+    @staticmethod
+    def stop_multi_process_pool(pool: Dict[str, Any]) -> None:
+        for p in pool["processes"]:
+            p.terminate()
+
+        for p in pool["processes"]:
+            p.join()
+            p.close()
+
+        pool["input"].close()
+        pool["output"].close()
+
+    def encode_multi_process(
+        self,
+        sentences: List[str],
+        pool: Dict[str, Any],
+        batch_size: int = 32,
+        chunk_size: int = None,
+        show_progress_bar: bool = True,
+    ) -> np.ndarray:
+        if chunk_size is None:
+            chunk_size = min(math.ceil(len(sentences) / len(pool["processes"]) / 10), 10000)
+
+        print(f"Chunk data into {math.ceil(len(sentences) / chunk_size)} packages of size {chunk_size}")
+
+        input_queue = pool["input"]
+        last_chunk_id = 0
+        chunk = []
+
+        # Split sentences into chunks and queue them
+        for sentence in sentences:
+            chunk.append(sentence)
+            if len(chunk) >= chunk_size:
+                input_queue.put({
+                    "chunk_id": last_chunk_id,
+                    "batch_size": batch_size,
+                    "sentences": chunk,
+                })
+                last_chunk_id += 1
+                chunk = []
+
+        if len(chunk) > 0:
+            input_queue.put({
+                "chunk_id": last_chunk_id,
+                "batch_size": batch_size,
+                "sentences": chunk,
+            })
+            last_chunk_id += 1
+
+        output_queue = pool["output"]
+
+        # Collect results
+        results_list = sorted(
+            [output_queue.get() for _ in tqdm.trange(last_chunk_id, desc="Chunks", disable=not show_progress_bar)],
+            key=lambda x: x[0],
+        )
+        embeddings = np.concatenate([result[1] for result in results_list])
+        return embeddings
+    
     def encode_corpus(
         self,
-        corpus: List[str],
+        corpus: list[dict[str, str]] | dict[str, list[str]] | list[str],
         prompt_name: str = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> np.ndarray:
-        """
-        Encode a corpus using data parallelism.
+        sentences = corpus_to_texts(corpus, sep=" ")
+        if "request_qid" in kwargs:
+            kwargs.pop("request_qid")
+        # NOTE: two spaces after the colon
+        sentences = [f"passage:  {sentence}".strip() for sentence in sentences]
+        print(f"Encoding corpus of length {len(sentences)}")
+        print(f"First sentence: {sentences[0]}")
+        return self.encode(sentences, **kwargs)
 
-        Args:
-            corpus (list[str]): List of sentences to encode.
-            prompt_name (str): Optional prompt name for formatting.
-            kwargs: Additional arguments for encoding.
-
-        Returns:
-            np.ndarray: Encoded corpus embeddings.
-        """
-        # Prepare the corpus
-        sentences = [f"passage:  {sentence}".strip() for sentence in corpus]
-
-        # Split corpus into chunks for each GPU
-        num_gpus = len(self.gpu_ids)
-        chunks = [sentences[i::num_gpus] for i in range(num_gpus)]
-
-        # Process each chunk on a separate GPU in parallel
-        with ThreadPoolExecutor(max_workers=num_gpus) as executor:
-            futures = [
-                executor.submit(self.encode_chunk, self.models[gpu_id], f"cuda:{gpu_id}", chunk, **kwargs)
-                for gpu_id, chunk in enumerate(chunks)
-            ]
-            results = [future.result() for future in futures]
-
-        # Concatenate results from all GPUs
-        return np.concatenate(results, axis=0)
-
-    def encode_queries(
-        self,
-        queries: List[str],
-        **kwargs,
-    ) -> np.ndarray:
-        """
-        Encode queries using data parallelism.
-
-        Args:
-            queries (list[str]): List of queries to encode.
-            kwargs: Additional arguments for encoding.
-
-        Returns:
-            np.ndarray: Encoded query embeddings.
-        """
-        # Prepare the queries
-        sentences = [f"query:  {query.strip()}" for query in queries]
-
-        # Split queries into chunks for each GPU
-        num_gpus = len(self.gpu_ids)
-        chunks = [sentences[i::num_gpus] for i in range(num_gpus)]
-
-        # Process each chunk on a separate GPU in parallel
-        with ThreadPoolExecutor(max_workers=num_gpus) as executor:
-            futures = [
-                executor.submit(self.encode_chunk, self.models[gpu_id], f"cuda:{gpu_id}", chunk, **kwargs)
-                for gpu_id, chunk in enumerate(chunks)
-            ]
-            results = [future.result() for future in futures]
-
-        # Concatenate results from all GPUs
-        return np.concatenate(results, axis=0)
-
+    def encode_queries(self, queries: list[str], **kwargs: Any) -> np.ndarray:
+        # NOTE: two spaces after the colon
+        queries = [f"query:  {query.strip()}".strip() for query in queries]
+        print(f"Encoding queries of length {len(queries)}")
+        print(queries[0])
+        return self.encode(queries, **kwargs)
 
 
 # class RepLLaMAWrapper:
@@ -212,6 +347,9 @@ class RepLLaMAWrapper:
 #         # set the max_length for the evals as they did, although the model can handle longer
 #         self.model.config.max_length = 512
 #         self.tokenizer.model_max_length = 512
+
+#         print(self.model.layers[0].mlp.gate_proj.weight.sum())
+
 
 #     def create_batch_dict(self, tokenizer, input_texts):
 #         max_length = self.model.config.max_length
