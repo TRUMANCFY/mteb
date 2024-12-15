@@ -6,10 +6,12 @@ from ....abstasks.AbsTaskRetrieval import AbsTaskRetrieval
 
 from datasets import load_dataset
 
+from tqdm import tqdm
+
 class FactoidWikiPassageRetrieval(AbsTaskRetrieval):
     metadata = TaskMetadata(
-        name="FactoidWikiPassage",
-        description="FactoidWikiPassage",
+        name="FactoidWikiPassageRetrieval",
+        description="FactoidWikiPassageRetrieval",
         reference="https://arxiv.org/abs/2312.06648",
         dataset={
             "path": "https://huggingface.co/datasets/trumancai/factoid-wiki",
@@ -65,17 +67,22 @@ class FactoidWikiPassageRetrieval(AbsTaskRetrieval):
     def _load_data_for_split(self):
         corpus, queries, qrels = {}, {}, {}
         # load training for test
-        corpus_lines = list(load_dataset('trumancai/factoid-wiki', split='train'))
+        # corpus_lines = load_dataset('trumancai/factoid-wiki', split='train')
+
+        # load test for test
+        corpus_lines = load_dataset('trumancai/factoid-wiki', split='train').to_pandas().to_dict(orient='records')
+        # corpus_lines = load_dataset('trumancai/factoid-wiki', split='train').to_pandas().to_dict(orient='records')[:1000]
+
         
-        for line in corpus_lines:
-            corpus[line['id']] = {
+        for line in tqdm(corpus_lines):
+            corpus[line['_id']] = {
                 '_id': line['_id'],
                 'title': line['title'],
                 'text': line['text'],
             }
             
             # distinguish between queries and corpus
-            queries['query-' + line['_id']] = line['text']
-            qrels['query-' + line['_id']] = {line['_id']: 1}
-
+            queries[line['_id']] = line['text']
+            qrels[line['_id']] = {line['_id']: 1}
+        print(f"Loaded {len(corpus)} documents, {len(queries)} queries, and {len(qrels)} qrels")
         return corpus, queries, qrels

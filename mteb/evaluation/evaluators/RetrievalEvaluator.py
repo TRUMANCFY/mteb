@@ -202,6 +202,103 @@ class DenseRetrievalExactSearch:
 
         return self.results
 
+    def search_corpus(
+        self,
+        corpus: dict[str, dict[str, str]],
+        top_k: int,
+        score_function: str,
+        prompt_name: str,
+        corpus_chunk_size: int = 512,
+        return_sorted: bool = False,
+        **kwargs,
+    ) -> dict[str, dict[str, float]]:
+        if score_function not in self.score_functions:
+            raise ValueError(
+                f"score function: {score_function} must be 'cos_sim' or 'dot'"
+            )
+
+        print("Precomputing Corpus Embeddings...")
+        corpus_ids = list(corpus.keys())
+        corpus_entries = [corpus[cid] for cid in corpus_ids]
+
+        # Pre-encode corpus once (if not already done)
+        if not hasattr(self, 'corpus_embeddings_full'):
+            self.corpus_embeddings_full = self.model.encode_corpus(
+                corpus_entries,
+                prompt_name=prompt_name,
+                **self.encode_kwargs,
+            )  # shape: [N, D]
+
+        corpus_embeddings = self.corpus_embeddings_full
+        query_embeddings = self.corpus_embeddings_full  # queries are corpus docs
+
+        N = len(corpus_ids)
+        result_heaps = [ [] for _ in range(N) ]  # one heap per query
+        # Each heap will store tuples of (score, doc_id), keeping track of top_k results
+
+        # Function to maintain a top-k heap for a given query
+        def update_heap(query_idx, candidate_id, candidate_score):
+            heap = result_heaps[query_idx]
+            if candidate_id == query_idx:
+                # If you're excluding the same document, just return
+                return
+            if len(heap) < top_k:
+                heapq.heappush(heap, (candidate_score, candidate_id))
+            else:
+                # If this candidate is better than the smallest in the heap, replace it
+                if candidate_score > heap[0][0]:
+                    heapq.heapreplace(heap, (candidate_score, candidate_id))
+
+        # Process queries in chunks
+        for q_start in range(0, N, corpus_chunk_size):
+            q_end = min(q_start + corpus_chunk_size, N)
+            query_chunk = query_embeddings[q_start:q_end]  # Shape: [Q_chunk_size, D]
+            Q_chunk_size = q_end - q_start
+
+            # For each query chunk, we compute similarity with the corpus in smaller chunks
+            for c_start in range(0, N, corpus_chunk_size):
+                c_end = min(c_start + corpus_chunk_size, N)
+                corpus_chunk = corpus_embeddings[c_start:c_end]  # [C_chunk_size, D]
+
+                # Compute similarity for this sub-block
+                # shape: [Q_chunk_size, C_chunk_size]
+                block_scores = self.score_functions[score_function](query_chunk, corpus_chunk)
+                block_scores[torch.isnan(block_scores)] = -1
+
+                # Update top-k heaps for each query in the chunk
+                block_scores_list = block_scores.cpu().tolist()
+                for i in range(Q_chunk_size):
+                    q_idx = q_start + i
+                    # Retrieve top candidates within this corpus chunk
+                    # Instead of top-k here, we can just iterate through all scores if C_chunk_size is small
+                    # Or find top-k in this block and then update heaps accordingly.
+                    # For simplicity, let's just iterate through all candidates here (less efficient but simpler):
+                    for j, score in enumerate(block_scores_list[i]):
+                        c_idx = c_start + j
+                        update_heap(q_idx, c_idx, score)
+
+        # Convert heaps to a final dictionary of results
+        results = {}
+        for i, qid in enumerate(corpus_ids):
+            # Sort heap by score descending if needed
+            # heaps are min-heaps, so pop elements into a list
+            if return_sorted:
+                # Extract all and then sort by score descending
+                res_list = []
+                while result_heaps[i]:
+                    score, doc_id = heapq.heappop(result_heaps[i])
+                    res_list.append((score, doc_id))
+                res_list.sort(key=lambda x: x[0], reverse=True)
+            else:
+                # If we don't need sorted results, res_list is just a snapshot
+                res_list = result_heaps[i]
+
+            # Map indices back to corpus_ids
+            results[qid] = {corpus_ids[doc_id]: s for s, doc_id in res_list}
+
+        return results
+
+
     def load_results_file(self):
         # load the first stage results from file in format {qid: {doc_id: score}}
         if "https://" in self.previous_results:
@@ -496,6 +593,20 @@ class RetrievalEvaluator(Evaluator):
                 self.score_function,
                 prompt_name=self.task_name,  # type: ignore
             )
+
+    def search_corpus(
+            self,
+            corpus: dict[str, dict[str, str]],
+    ) -> dict[str, dict[str, float]]:
+        if not self.retriever:
+            raise ValueError("Model/Technique has not been provided!")
+
+        return self.retriever.search_corpus(
+            corpus,
+            self.top_k,
+            self.score_function,
+            prompt_name=self.task_name,  # type: ignore
+        )
 
     @staticmethod
     def evaluate(

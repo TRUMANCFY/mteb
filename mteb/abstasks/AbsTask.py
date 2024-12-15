@@ -122,6 +122,7 @@ class AbsTask(ABC):
                 data_split = self.dataset[split]
             else:
                 data_split = self.dataset[hf_subset][split]
+            
             scores[hf_subset] = self._evaluate_subset(
                 model, data_split, encode_kwargs=encode_kwargs, **kwargs
             )

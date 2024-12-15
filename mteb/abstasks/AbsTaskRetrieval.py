@@ -299,13 +299,20 @@ class AbsTaskRetrieval(AbsTask):
             scores[hf_subset] = self._evaluate_subset(
                 retriever, corpus, queries, relevant_docs, hf_subset, **kwargs
             )
+
         return scores
+
 
     def _evaluate_subset(
         self, retriever, corpus, queries, relevant_docs, hf_subset: str, **kwargs
     ) -> ScoresDict:
         start_time = time()
-        results = retriever(corpus, queries)
+        
+        if 'search_corpus' in kwargs and kwargs['search_corpus']:
+            print("Searching corpus for relevant documents")
+            results = retriever.search_corpus(corpus)
+        else:
+            results = retriever(corpus, queries)
         end_time = time()
         logger.info(f"Time taken to retrieve: {end_time - start_time:.2f} seconds")
 
