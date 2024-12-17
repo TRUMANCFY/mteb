@@ -600,13 +600,23 @@ class RetrievalEvaluator(Evaluator):
     ) -> dict[str, dict[str, float]]:
         if not self.retriever:
             raise ValueError("Model/Technique has not been provided!")
-
-        return self.retriever.search_corpus(
-            corpus,
-            self.top_k,
-            self.score_function,
-            prompt_name=self.task_name,  # type: ignore
-        )
+        elif (
+            hasattr(self.retriever.model, "mteb_model_meta")
+            and self.retriever.model.mteb_model_meta.name == "bm25s"
+        ):
+            return self.retriever.model.search_corpus(
+                corpus,
+                self.top_k,
+                self.score_function,
+                prompt_name=self.task_name,  # type: ignore
+            )
+        else:
+            return self.retriever.search_corpus(
+                corpus,
+                self.top_k,
+                self.score_function,
+                prompt_name=self.task_name,  # type: ignore
+            )
 
     @staticmethod
     def evaluate(
