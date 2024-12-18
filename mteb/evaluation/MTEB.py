@@ -398,6 +398,9 @@ class MTEB:
                     if verbosity >= 1:
                         logger.info(f"Scores: {results}")
 
+                if 'search_corpus' in kwargs and kwargs['search_corpus']:
+                    return results
+                
                 mteb_task_result = MTEBResults.from_task_results(
                     task,
                     task_results,

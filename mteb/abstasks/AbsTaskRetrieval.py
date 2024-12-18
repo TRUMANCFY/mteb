@@ -342,6 +342,11 @@ class AbsTaskRetrieval(AbsTask):
             with open(qrels_save_path, "w") as f:
                 json.dump(results, f)
 
+        if 'search_corpus' in kwargs and kwargs['search_corpus']:
+            # If we are searching the corpus, we don't have the relevant documents
+            # so we can't calculate the metrics
+            return results
+
         ndcg, _map, recall, precision, naucs = retriever.evaluate(
             relevant_docs,
             results,
