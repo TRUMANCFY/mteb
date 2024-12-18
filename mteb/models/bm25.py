@@ -129,15 +129,21 @@ def bm25_loader(**kwargs):
             Returns:
                 A dictionary of the form {query_doc_id: {retrieved_doc_id: score, ...}, ...}
             """
-            logger.info("Encoding Corpus...")
+            logger.info("Preparing Corpus for Encoding and Tokenization...")
             corpus_ids = list(corpus.keys())
             corpus_with_ids = [{"doc_id": cid, **corpus[cid]} for cid in corpus_ids]
 
+            # Combine title and text for each document
             corpus_texts = [
-                "\n".join([doc.get("title", ""), doc["text"]])
+                "\n".join([doc.get("title", ""), doc["text"]]) if doc.get("title") else doc["text"]
                 for doc in corpus_with_ids
-            ]  # Combine title and text for encoding
+            ]
+
+            # Encode and tokenize the corpus once
+            logger.info("Encoding and Tokenizing Corpus...")
             encoded_corpus = self.encode(corpus_texts)
+            # Assuming `self.encode` returns an object with `tokens` attribute
+            # Adjust based on the actual return structure of `self.encode`
 
             logger.info(
                 f"Indexing Corpus... {len(encoded_corpus.ids):,} documents, {len(encoded_corpus.vocab):,} vocab"
@@ -147,13 +153,13 @@ def bm25_loader(**kwargs):
             retriever = bm25s.BM25()
             retriever.index(encoded_corpus)
 
-            # Now treat corpus as queries
-            queries_texts = corpus_texts  # Each corpus doc is now a query
-            query_token_strs = self.encode(queries_texts, return_ids=False)
+            # Use the already encoded tokens for queries to avoid re-encoding
+            queries_texts = corpus_texts
+            query_tokens = encoded_corpus  # Reuse tokens from the encoded corpus
 
             logger.info(f"Retrieving Results... {len(queries_texts):,} 'queries'")
             queries_results, queries_scores = retriever.retrieve(
-                query_token_strs, corpus=corpus_with_ids, k=top_k + (1 if exclude_self else 0)
+                query_tokens, corpus=corpus_with_ids, k=top_k + (1 if exclude_self else 0)
             )
 
             results = {}
@@ -181,11 +187,14 @@ def bm25_loader(**kwargs):
 
                 # If return_sorted is True, sort by score descending
                 if return_sorted:
-                    doc_id_to_score = dict(sorted(doc_id_to_score.items(), key=lambda x: x[1], reverse=True))
+                    doc_id_to_score = dict(
+                        sorted(doc_id_to_score.items(), key=lambda x: x[1], reverse=True)
+                    )
 
                 results[qid] = doc_id_to_score
 
             return results
+
 
         def encode(self, texts: list[str], **kwargs):
             """Encode input text as term vectors"""
