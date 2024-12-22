@@ -31,17 +31,25 @@ class RepLLaMAWrapper:
         self.torch_dtype = kwargs["torch_dtype"]
         self.device_map = kwargs.get("device_map", None)
 
+        self.pool = None  # Will store multi-process pool if multiple GPUs
+        self.tokenizer = None
+        self.model = None
+
         num_gpus = torch.cuda.device_count()
         print(f"Number of GPUs: {num_gpus}")
 
-        # If only one GPU or CPU, load model directly
+        # If only one GPU or CPU, load model directly in the constructor
         if num_gpus <= 1:
             self.base_model = AutoModel.from_pretrained(
                 self.base_model_name_or_path,
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
             )
-            self.model = PeftModel.from_pretrained(self.base_model, self.peft_model_name_or_path)
+            self.model = PeftModel.from_pretrained(
+                self.base_model,
+                self.peft_model_name_or_path
+            )
+            # Merge and unload the LoRA weights into the base model
             self.model = self.model.merge_and_unload()
 
             self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
@@ -51,6 +59,11 @@ class RepLLaMAWrapper:
 
             self.model.config.max_length = 512
             self.tokenizer.model_max_length = 512
+        else:
+            # For multiple GPUs, we create our multi-process pool once
+            self.pool = self.start_multi_process_pool()
+            # Note: We do NOT load model/tokenizer here on the main process
+            # since each worker in the pool loads them individually.
 
     def create_batch_dict(self, tokenizer, input_texts):
         max_length = self.model.config.max_length
@@ -81,21 +94,14 @@ class RepLLaMAWrapper:
         **kwargs: Any,
     ) -> np.ndarray:
         """
-        If multiple GPUs are available, start a multi-process pool, encode, then stop the pool.
+        If multiple GPUs are available (i.e. self.pool exists), we encode via multi-process.
         Otherwise, uses single-process encoding.
         """
-        num_gpus = torch.cuda.device_count()
-        if num_gpus > 1:
-            # Multiple GPUs: start multi-process pool
-            pool = self.start_multi_process_pool()
-            try:
-                embeddings = self.encode_multi_process(sentences, pool, batch_size=batch_size)
-            finally:
-                # Ensure the pool is stopped even if an exception occurs
-                self.stop_multi_process_pool(pool)
-            return embeddings
+        # If we have a pool => multi-process
+        if self.pool is not None:
+            return self.encode_multi_process(sentences, self.pool, batch_size=batch_size)
         else:
-            # Single GPU or CPU: single-process encoding
+            # Single GPU or CPU
             device = self.model.device
             all_embeddings = []
             for i in tqdm.tqdm(range(0, len(sentences), batch_size)):
@@ -127,6 +133,11 @@ class RepLLaMAWrapper:
         input_queue: mp.Queue,
         results_queue: mp.Queue,
     ) -> None:
+        """
+        Each worker loads its own model and tokenizer, then reads from input_queue,
+        processes the data, and writes back to results_queue.
+        """
+        # Load base model + adapter
         base_model = AutoModel.from_pretrained(
             base_model_name_or_path,
             torch_dtype=torch_dtype,
@@ -135,12 +146,14 @@ class RepLLaMAWrapper:
 
         model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
         model = model.merge_and_unload()
-        model.config.max_length = 512
 
         tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
         tokenizer.pad_token_id = tokenizer.eos_token_id
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "right"
+        
+        model.config.max_length = 512
+        tokenizer.model_max_length = 512
 
         def create_batch_dict(input_texts):
             max_length = model.config.max_length
@@ -165,7 +178,7 @@ class RepLLaMAWrapper:
 
         while True:
             try:
-                task = input_queue.get(timeout=1)
+                task = input_queue.get(timeout=1800)
                 if task is None:
                     print(f"Worker on device {device} received None -> break")
                     break
@@ -202,6 +215,10 @@ class RepLLaMAWrapper:
     def start_multi_process_pool(
         self, target_devices: List[str] = None
     ) -> Dict[str, Any]:
+        """
+        Spawn workers for each device in target_devices (or all GPUs if not specified).
+        Returns a dict with 'input' and 'output' queues and a list of processes under 'processes'.
+        """
         if target_devices is None:
             if torch.cuda.is_available():
                 target_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
@@ -237,7 +254,9 @@ class RepLLaMAWrapper:
 
     @staticmethod
     def stop_multi_process_pool(pool: Dict[str, Any]) -> None:
-        # Send termination signal
+        """
+        Send None to each worker to signal termination, then join processes.
+        """
         for _ in pool["processes"]:
             pool["input"].put(None)
 
@@ -256,7 +275,11 @@ class RepLLaMAWrapper:
         chunk_size: int = None,
         show_progress_bar: bool = True,
     ) -> np.ndarray:
+        """
+        Distribute the encoding job across multiple workers in pool.
+        """
         if chunk_size is None:
+            # Heuristic: split into about #devices * 10 chunks, but not bigger than 10k
             chunk_size = min(math.ceil(len(sentences) / len(pool["processes"]) / 10), 10000)
 
         print(f"Chunk data into {math.ceil(len(sentences) / chunk_size)} packages of size {chunk_size}")
@@ -301,6 +324,10 @@ class RepLLaMAWrapper:
         prompt_name: str = None,
         **kwargs: Any,
     ) -> np.ndarray:
+        """
+        Turns a corpus into text lines, optionally adds a 'passage:' prefix,
+        then encodes with either multi- or single-process method.
+        """
         sentences = corpus_to_texts(corpus, sep=" ")
         if "request_qid" in kwargs:
             kwargs.pop("request_qid")
@@ -310,10 +337,29 @@ class RepLLaMAWrapper:
         return self.encode(sentences, **kwargs)
 
     def encode_queries(self, queries: List[str], **kwargs: Any) -> np.ndarray:
+        """
+        Turns queries into text lines with a 'query:' prefix and encodes them.
+        """
         queries = [f"query:  {query.strip()}".strip() for query in queries]
         print(f"Encoding queries of length {len(queries)}")
         print(queries[0])
         return self.encode(queries, **kwargs)
+
+    def close(self):
+        """
+        Cleanly shuts down any active multi-process pool.
+        """
+        if self.pool is not None:
+            self.stop_multi_process_pool(self.pool)
+            self.pool = None
+            print("Multi-process pool closed.")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Context-manager exit point: automatically calls close(),
+        ensuring resources are cleaned up when exiting the `with` block.
+        """
+        self.close()
 
 
 
