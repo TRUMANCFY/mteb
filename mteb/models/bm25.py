@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from functools import partial
 from typing import Any
+import os
+import pickle
 
 from mteb.evaluation.evaluators.RetrievalEvaluator import DRESModel
 from mteb.model_meta import ModelMeta
@@ -52,28 +54,37 @@ def bm25_loader(**kwargs):
             corpus: dict[str, dict[str, str]],
             queries: dict[str, str | list[str]],
             top_k: int,
-            score_function: str,
             return_sorted: bool = False,
             **kwargs,
         ) -> dict[str, dict[str, float]]:
-            logger.info("Encoding Corpus...")
+            
             corpus_ids = list(corpus.keys())
             corpus_with_ids = [{"doc_id": cid, **corpus[cid]} for cid in corpus_ids]
+            
+            if "save_index_path"  in kwargs and os.path.exists(kwargs["save_index_path"]):
+                print("Loading precomputed embeddings...")
+                retriever = bm25s.BM25.load(kwargs["save_index_path"], load_corpus=True)
+            else:
+                print("Encoding Corpus...")
+                corpus_texts = [
+                    "\n".join([doc.get("title", ""), doc["text"]])
+                    for doc in corpus_with_ids
+                ]  # concatenate all document values (title, text, ...)
+                encoded_corpus = self.encode(corpus_texts)
 
-            corpus_texts = [
-                "\n".join([doc.get("title", ""), doc["text"]])
-                for doc in corpus_with_ids
-            ]  # concatenate all document values (title, text, ...)
-            encoded_corpus = self.encode(corpus_texts)
+                print(
+                    f"Indexing Corpus... {len(encoded_corpus.ids):,} documents, {len(encoded_corpus.vocab):,} vocab"
+                )
 
-            logger.info(
-                f"Indexing Corpus... {len(encoded_corpus.ids):,} documents, {len(encoded_corpus.vocab):,} vocab"
-            )
+                # Create the BM25 model and index the corpus
+                retriever = bm25s.BM25()
+                retriever.index(encoded_corpus)
 
-            # Create the BM25 model and index the corpus
-            retriever = bm25s.BM25()
-            retriever.index(encoded_corpus)
-
+                if 'save_index_path' in kwargs and kwargs['save_index_path'] is not None:
+                    print("Saving precomputed embeddings...")
+                    # it will automatically save the corpus `self.corpus`
+                    retriever.save(kwargs['save_index_path'])
+                    
             logger.info("Encoding Queries...")
             query_ids = list(queries.keys())
             self.results = {qid: {} for qid in query_ids}
@@ -105,96 +116,6 @@ def bm25_loader(**kwargs):
                 self.results[qid] = doc_id_to_score
 
             return self.results
-        
-        def search_corpus(
-            self,
-            corpus: dict[str, dict[str, str]],
-            top_k: int,
-            score_function: str,
-            return_sorted: bool = False,
-            exclude_self: bool = True,  # If True, don't return the same doc as a result
-            **kwargs,
-        ) -> dict[str, dict[str, float]]:
-            """
-            Use the corpus itself as the set of queries.
-            For each document in the corpus, retrieve the top-k documents from the corpus.
-
-            Args:
-                corpus: A dictionary {doc_id: {"title": ..., "text": ...}, ...}
-                top_k: Number of documents to retrieve for each query document
-                score_function: BM25 doesn't need a separate score_function, but kept for consistency
-                return_sorted: If True, results are sorted by score descending
-                exclude_self: If True, remove the query document from its own top-k results
-
-            Returns:
-                A dictionary of the form {query_doc_id: {retrieved_doc_id: score, ...}, ...}
-            """
-            logger.info("Preparing Corpus for Encoding and Tokenization...")
-            corpus_ids = list(corpus.keys())
-            corpus_with_ids = [{"doc_id": cid, **corpus[cid]} for cid in corpus_ids]
-
-            # Combine title and text for each document
-            corpus_texts = [
-                "\n".join([doc.get("title", ""), doc["text"]]) if doc.get("title") else doc["text"]
-                for doc in corpus_with_ids
-            ]
-
-            # Encode and tokenize the corpus once
-            logger.info("Encoding and Tokenizing Corpus...")
-            encoded_corpus = self.encode(corpus_texts)
-            # Assuming `self.encode` returns an object with `tokens` attribute
-            # Adjust based on the actual return structure of `self.encode`
-
-            logger.info(
-                f"Indexing Corpus... {len(encoded_corpus.ids):,} documents, {len(encoded_corpus.vocab):,} vocab"
-            )
-
-            # Create and index the BM25 model
-            retriever = bm25s.BM25()
-            retriever.index(encoded_corpus)
-
-            # Use the already encoded tokens for queries to avoid re-encoding
-            queries_texts = corpus_texts
-            query_tokens = encoded_corpus  # Reuse tokens from the encoded corpus
-
-            logger.info(f"Retrieving Results... {len(queries_texts):,} 'queries'")
-            queries_results, queries_scores = retriever.retrieve(
-                query_tokens, corpus=corpus_with_ids, k=top_k + (1 if exclude_self else 0)
-            )
-
-            results = {}
-
-            # Iterate over queries (which are actually corpus docs)
-            for qi, qid in enumerate(corpus_ids):
-                query_results = queries_results[qi]
-                scores = queries_scores[qi]
-
-                doc_id_to_score = {}
-
-                for ri, doc in enumerate(query_results):
-                    score = scores[ri]
-                    doc_id = doc["doc_id"]
-
-                    # If excluding the query doc itself, skip it
-                    if exclude_self and doc_id == qid:
-                        continue
-
-                    doc_id_to_score[doc_id] = float(score)
-
-                    # If after excluding self we have more than top_k, truncate
-                    if exclude_self and len(doc_id_to_score) == top_k:
-                        break
-
-                # If return_sorted is True, sort by score descending
-                if return_sorted:
-                    doc_id_to_score = dict(
-                        sorted(doc_id_to_score.items(), key=lambda x: x[1], reverse=True)
-                    )
-
-                results[qid] = doc_id_to_score
-
-            return results
-
 
         def encode(self, texts: list[str], **kwargs):
             """Encode input text as term vectors"""
