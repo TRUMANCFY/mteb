@@ -312,7 +312,7 @@ class AbsTaskRetrieval(AbsTask):
             print("Searching corpus for relevant documents")
             results = retriever.search_corpus(corpus)
         else:
-            results = retriever(corpus, queries)
+            results = retriever(corpus, queries, **kwargs)
         end_time = time()
         logger.info(f"Time taken to retrieve: {end_time - start_time:.2f} seconds")
 

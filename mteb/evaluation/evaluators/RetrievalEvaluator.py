@@ -568,6 +568,7 @@ class RetrievalEvaluator(Evaluator):
         self,
         corpus: dict[str, dict[str, str]],
         queries: dict[str, str | list[str]],
+        **kwargs,
     ) -> dict[str, dict[str, float]]:
         if not self.retriever:
             raise ValueError("Model/Technique has not been provided!")
@@ -578,12 +579,17 @@ class RetrievalEvaluator(Evaluator):
             hasattr(self.retriever.model, "mteb_model_meta")
             and self.retriever.model.mteb_model_meta.name == "bm25s"
         ):
+            # remove top_k from kwargs
+            if "top_k" in kwargs:
+                kwargs.pop("top_k")
+
             return self.retriever.model.search(
-                corpus,
-                queries,
-                self.top_k,
-                self.score_function,
+                corpus=corpus,
+                queries=queries,
+                top_k=self.top_k,
+                score_function=self.score_function,
                 prompt_name=self.task_name,  # type: ignore
+                **kwargs,
             )
         else:
             return self.retriever.search(
