@@ -45,7 +45,7 @@ class RepLLaMAWrapper:
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
             )
-            if self.peft_model_name_or_path is None:
+            if self.peft_model_name_or_path is not None:
                 self.model = PeftModel.from_pretrained(
                     self.base_model,
                     self.peft_model_name_or_path
@@ -146,7 +146,7 @@ class RepLLaMAWrapper:
             device_map=None,
         ).to(device)
 
-        if peft_model_name_or_path is None:
+        if peft_model_name_or_path is not None:
             model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
             model = model.merge_and_unload()
         else:
