@@ -45,13 +45,15 @@ class RepLLaMAWrapper:
                 torch_dtype=self.torch_dtype,
                 device_map=self.device_map,
             )
-            self.model = PeftModel.from_pretrained(
-                self.base_model,
-                self.peft_model_name_or_path
-            )
-            # Merge and unload the LoRA weights into the base model
-            self.model = self.model.merge_and_unload()
-
+            if self.peft_model_name_or_path is None:
+                self.model = PeftModel.from_pretrained(
+                    self.base_model,
+                    self.peft_model_name_or_path
+                )
+                self.model = self.model.merge_and_unload()
+            else:
+                self.model = self.base_model
+            
             self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_name_or_path)
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -144,8 +146,11 @@ class RepLLaMAWrapper:
             device_map=None,
         ).to(device)
 
-        model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
-        model = model.merge_and_unload()
+        if peft_model_name_or_path is None:
+            model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
+            model = model.merge_and_unload()
+        else:
+            model = base_model
 
         tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path)
         tokenizer.pad_token_id = tokenizer.eos_token_id
