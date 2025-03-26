@@ -145,3 +145,9 @@ from .eng.InstructIR import *
 from .eng.MsMarcoWInstructionRetrieval import *
 from .eng.MsMarcoWInstructionPartialRetrieval import *
 from .eng.FactoidWikiPassageRetrieval import *
+from .code.pref_code.CodeNetBugPreferenceRetrieval import *
+from .code.pref_code.CodeNetEfficiencyPreferenceRetrieval import *
+from .code.pref_code.CVEFixesPreferenceRetrieval import *
+from .code.pref_code.Defects4JPreferenceRetrieval import *
+from .code.pref_code.DeprecatedCodePreferenceRetrieval import *
+from .code.pref_code.SaferCodePreferenceRetrieval import *
