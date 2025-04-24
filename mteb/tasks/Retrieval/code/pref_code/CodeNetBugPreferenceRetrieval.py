@@ -30,7 +30,7 @@ _LANGS = ["c",
 # Example doc-id: "someprefix-python-123"
 # This will break if the format changes
 def get_lang(_doc_str):
-    return _doc_str.split("-")[-2]
+    return _doc_str.split("-")[-2].lower()
 
 class CodeNetBugPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
     _EVAL_SPLIT = "test"
@@ -143,10 +143,10 @@ class CodeNetBugPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
 
         # read the dataset
         DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
-        CODENET_DIR = os.path.join(DATASET_DIR, 'CodeNet')
-        corpus_bug_file = os.path.join(CODENET_DIR, 'corpus_bug.jsonl')
-        qrels_bug_file = os.path.join(CODENET_DIR, 'qrels_bug.jsonl')
-        query_bug_file = os.path.join(CODENET_DIR, 'query_bug.jsonl')
+        CODENET_DIR = os.path.join(DATASET_DIR, 'codenet_bug')
+        corpus_bug_file = os.path.join(CODENET_DIR, 'corpus.jsonl')
+        qrels_bug_file = os.path.join(CODENET_DIR, 'qrels.jsonl')
+        query_bug_file = os.path.join(CODENET_DIR, 'query.jsonl')
 
         corpus_bug_lines = load_jsonl(corpus_bug_file)
         qrels_bug_lines = load_jsonl(qrels_bug_file)
@@ -163,7 +163,7 @@ class CodeNetBugPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
 
         # insert corpus
         for _line in tqdm(corpus_bug_lines):
-            _lang = _line['lang']
+            _lang = _line['lang'].lower()
             if _lang not in self.queries:
                 self.queries[_lang] = {self._EVAL_SPLIT: {}}
                 self.corpus[_lang] = {self._EVAL_SPLIT: {}}

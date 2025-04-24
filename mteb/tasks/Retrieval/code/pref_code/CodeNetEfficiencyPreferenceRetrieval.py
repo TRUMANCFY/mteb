@@ -30,7 +30,7 @@ _LANGS = ["c",
 # Example doc-id: "someprefix-python-123"
 # This will break if the format changes
 def get_lang(_doc_str):
-    return _doc_str.split("-")[-2]
+    return _doc_str.split("-")[-2].lower()
 
 class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
     _EVAL_SPLIT = "test"
@@ -143,10 +143,10 @@ class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
 
         # read the dataset
         DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
-        CODENET_DIR = os.path.join(DATASET_DIR, 'CodeNet')
-        corpus_effi_file = os.path.join(CODENET_DIR, 'corpus_effi.jsonl')
-        qrels_effi_file = os.path.join(CODENET_DIR, 'qrels_effi.jsonl')
-        query_effi_file = os.path.join(CODENET_DIR, 'query_effi.jsonl')
+        CODENET_DIR = os.path.join(DATASET_DIR, 'codenet_effi')
+        corpus_effi_file = os.path.join(CODENET_DIR, 'corpus.jsonl')
+        qrels_effi_file = os.path.join(CODENET_DIR, 'qrels.jsonl')
+        query_effi_file = os.path.join(CODENET_DIR, 'query.jsonl')
 
         corpus_effi_lines = load_jsonl(corpus_effi_file)
         qrels_effi_lines = load_jsonl(qrels_effi_file)
@@ -163,7 +163,7 @@ class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
 
         # insert corpus
         for _line in tqdm(corpus_effi_lines):
-            _lang = _line['lang']
+            _lang = _line['lang'].lower()
             if _lang not in self.queries:
                 self.queries[_lang] = {self._EVAL_SPLIT: {}}
                 self.corpus[_lang] = {self._EVAL_SPLIT: {}}
