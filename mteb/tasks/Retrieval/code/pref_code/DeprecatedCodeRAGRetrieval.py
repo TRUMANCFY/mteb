@@ -6,6 +6,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+import pandas as pd
 
 def load_jsonl(filepath):
     data = []
@@ -15,19 +16,15 @@ def load_jsonl(filepath):
                 data.append(json.loads(line))
     return data
 
-# no pandas and transformers because of the short corpus (shorter than 1000)
-# update: let take them back and set top_k as 100
-_LANGS = ["numpy", "pandas", "pytorch", "scipy", "seaborn", "sklearn", "tensorflow", "transformers"]
-
 # Example doc-id: "someprefix-python-123"
 # This will break if the format changes
 def get_lang(_doc_str):
     return _doc_str.split("-")[1]
 
-class DeprecatedCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
+class DeprecatedCodeRAGRetrieval(AbsTaskRetrieval):
     _EVAL_SPLIT = "test"
     metadata = TaskMetadata(
-        name="DeprecatedCodePreferenceRetrieval",
+        name="DeprecatedCodeRAGRetrieval",
         description="The dataset is derived from CodeNet to benchmark retrievers' performance on cvefixed.",
         reference="https://huggingface.co/datasets/code_search_net/",
         dataset={
@@ -38,7 +35,7 @@ class DeprecatedCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
         category="p2p",
         modalities=["text"],
         eval_splits=[_EVAL_SPLIT],
-        eval_langs={lang: [lang + "-Code"] for lang in _LANGS},
+        eval_langs=["eng-Latn", "python-Code"],
         main_score="ndcg_at_10",
         date=("2019-01-01", "2019-12-31"),
         domains=["Programming", "Written"],
@@ -118,50 +115,35 @@ class DeprecatedCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
         if not os.path.exists(DATASET_DIR):
             raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        DEPRECATEDCODE_DIR = os.path.join(DATASET_DIR, 'DeprecatedCode')
-        
-        # queries[lang][split][query_id] = text
-        self.queries = {}
-        # corpus[lang][split][doc_id] = {"title": doc_title, "text": doc_text}
-        self.corpus = {}
-        self.relevant_docs = {}
-        
-        for _lang in _LANGS:
-            self.queries[_lang] = {self._EVAL_SPLIT: {}}
-            self.corpus[_lang] = {self._EVAL_SPLIT: {}}
-            self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
+        DEPRECATEDCODE_DIR = os.path.join(DATASET_DIR, 'deprecated')
+
+        query_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, 'deprecated_sampled.xlsx')
+        corpus_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, 'corpus.jsonl')
+
+        query_df = pd.read_excel(query_deprecated_file)
+        query_deprecated_lines = query_df.to_dict(orient='records')
+        corpus_deprecated_lines = load_jsonl(corpus_deprecated_file)
+
+        self.queries = {self._EVAL_SPLIT: {}}
+        self.corpus = {self._EVAL_SPLIT: {}}
+        self.relevant_docs = {self._EVAL_SPLIT: {}}    
+
+        # filter queries based on languages
+        for _line in tqdm(corpus_deprecated_lines):
+            _doc_id = _line['doc-id']
+            self.corpus[self._EVAL_SPLIT][_doc_id] = {
+                "title": str(_line.get('title', '')),
+                "text": str(_line['text'])
+            }
             
-            corpus_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'corpus-{_lang}.jsonl')
-            qrels_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'qrels-{_lang}.jsonl')
-            query_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'query-{_lang}.jsonl')
-
-            corpus_deprecated_lines = load_jsonl(corpus_deprecated_file)
-            qrels_deprecated_lines = load_jsonl(qrels_deprecated_file)
-            query_deprecated_lines = load_jsonl(query_deprecated_file)
-
-            # convert query_bug_lines to dict
-            query_deprecated_dict = {_line['query-id']: _line for _line in query_deprecated_lines}
-
-            for _line in tqdm(corpus_deprecated_lines):
-                _doc_id = _line['doc-id']
-                self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
-                    "title": str(_line.get('title', '')),
-                    "text": str(_line['text'])
-                }
-
-            # insert queries and relevant docs
-            for _line in tqdm(qrels_deprecated_lines):
-                qid = _line['qid']
-                pos_doc_ids = _line['pos-docids']
-
-                for pos_doc_id in pos_doc_ids:
-                    # insert query
-                    # insert relevant docs
-                    if qid not in self.queries[_lang][self._EVAL_SPLIT]:
-                        self.queries[_lang][self._EVAL_SPLIT][qid] = str(query_deprecated_dict[qid]['text'])
-                
-                    if qid not in self.relevant_docs[_lang][self._EVAL_SPLIT]:
-                        self.relevant_docs[_lang][self._EVAL_SPLIT][qid] = {}
-                    self.relevant_docs[_lang][self._EVAL_SPLIT][qid][pos_doc_id] = 1
-
+        # insert queries and relevant docs
+        for _query_idx, _line in tqdm(enumerate(query_deprecated_lines)):
+            qid = "query-" + str(_query_idx)
+            # insert relevant docs
+            if qid not in self.queries[self._EVAL_SPLIT]:
+                self.queries[self._EVAL_SPLIT][qid] = _line['queries']
+            
+            if qid not in self.relevant_docs[self._EVAL_SPLIT]:
+                self.relevant_docs[self._EVAL_SPLIT][qid] = {}
+            
         self.data_loaded = True

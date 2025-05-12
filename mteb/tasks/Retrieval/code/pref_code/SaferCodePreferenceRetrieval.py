@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from mteb.abstasks.AbsTaskRetrieval import AbsTaskRetrieval
+from mteb.abstasks.MultilingualTask import MultilingualTask
 from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
@@ -14,8 +15,13 @@ def load_jsonl(filepath):
                 data.append(json.loads(line))
     return data
 
+def get_lang(_doc_str):
+    # Example doc-id: safecoder-python-train-new-9-pos0
+    return _doc_str.split("-")[1]
 
-class SaferCodePreferenceRetrieval(AbsTaskRetrieval):
+_LANGS = ["c", "cpp", "python", "java", "javascript", "go", "ruby"]
+
+class SaferCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
     _EVAL_SPLIT = "test"
     metadata = TaskMetadata(
         name="SaferCodePreferenceRetrieval",
@@ -29,7 +35,7 @@ class SaferCodePreferenceRetrieval(AbsTaskRetrieval):
         category="p2p",
         modalities=["text"],
         eval_splits=[_EVAL_SPLIT],
-        eval_langs=["eng-Latn", "python-Code"],
+        eval_langs={lang: [lang + "-Code"] for lang in _LANGS},
         main_score="ndcg_at_10",
         date=("2019-01-01", "2019-12-31"),
         domains=["Programming", "Written"],
@@ -58,7 +64,11 @@ class SaferCodePreferenceRetrieval(AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
+        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+
+        if not os.path.exists(DATASET_DIR):
+            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+
         SAFECODE_DIR = os.path.join(DATASET_DIR, 'SafeCoder')
         corpus_safecode_file = os.path.join(SAFECODE_DIR, 'corpus.jsonl')
         qrels_safecode_file = os.path.join(SAFECODE_DIR, 'qrels.jsonl')
@@ -71,30 +81,39 @@ class SaferCodePreferenceRetrieval(AbsTaskRetrieval):
         # convert query_safecode_lines to dict
         query_safecode_dict = {_line['query-id']: _line for _line in query_safecode_lines}
 
-        self.queries = {self._EVAL_SPLIT: {}}
-        self.corpus = {self._EVAL_SPLIT: {}}
-        self.relevant_docs = {self._EVAL_SPLIT: {}}
+        self.queries = {}
+        self.corpus = {}
+        self.relevant_docs = {}
 
         # insert corpus
         for _line in tqdm(corpus_safecode_lines):
+            _lang = _line['lang']
+            assert _lang in _LANGS, f"Language {_lang} not supported. Supported languages are: {_LANGS}"
+            if _lang not in self.queries:
+                self.queries[_lang] = {self._EVAL_SPLIT: {}}
+                self.corpus[_lang] = {self._EVAL_SPLIT: {}}
+                self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
+            
             _doc_id = _line['doc-id']
-            self.corpus[self._EVAL_SPLIT][_doc_id] = {
+            self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
                 "title": _line.get('title', ''),
                 "text": _line['text']
             }
+        
         # insert queries and relevant docs
         for _line in tqdm(qrels_safecode_lines):
             qid = _line['qid']
             pos_doc_ids = _line['pos-docids']
 
             for pos_doc_id in pos_doc_ids:
-                # insert query
-                # insert relevant docs
-                if qid not in self.queries[self._EVAL_SPLIT]:
-                    self.queries[self._EVAL_SPLIT][qid] = query_safecode_dict[qid]['text']
+                _lang = get_lang(pos_doc_id)
+                assert _lang in _LANGS, f"Language {_lang} not supported. Supported languages are: {_LANGS}"
                 
-                if qid not in self.relevant_docs[self._EVAL_SPLIT]:
-                    self.relevant_docs[self._EVAL_SPLIT][qid] = {}
-                self.relevant_docs[self._EVAL_SPLIT][qid][pos_doc_id] = 1
+                if qid not in self.queries[_lang][self._EVAL_SPLIT]:
+                    self.queries[_lang][self._EVAL_SPLIT][qid] = str(query_safecode_dict[qid]['text'])
+                
+                if qid not in self.relevant_docs[_lang][self._EVAL_SPLIT]:
+                    self.relevant_docs[_lang][self._EVAL_SPLIT][qid] = {}
+                self.relevant_docs[_lang][self._EVAL_SPLIT][qid][pos_doc_id] = 1
 
         self.data_loaded = True

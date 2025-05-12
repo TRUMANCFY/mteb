@@ -142,7 +142,11 @@ class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
+        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+
+        if not os.path.exists(DATASET_DIR):
+            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+
         CODENET_DIR = os.path.join(DATASET_DIR, 'codenet_effi')
         corpus_effi_file = os.path.join(CODENET_DIR, 'corpus.jsonl')
         qrels_effi_file = os.path.join(CODENET_DIR, 'qrels.jsonl')

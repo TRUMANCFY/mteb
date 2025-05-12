@@ -137,7 +137,11 @@ class CVEFixesPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
+        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+
+        if not os.path.exists(DATASET_DIR):
+            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+
         CVEFIXES_DIR = os.path.join(DATASET_DIR, 'CVEFixes')
         corpus_cvefixes_file = os.path.join(CVEFIXES_DIR, 'corpus.jsonl')
         qrels_cvefixes_file = os.path.join(CVEFIXES_DIR, 'qrels.jsonl')

@@ -152,3 +152,5 @@ from .code.pref_code.Defects4JPreferenceRetrieval import *
 from .code.pref_code.DeprecatedCodePreferenceRetrieval import *
 from .code.pref_code.SaferCodePreferenceRetrieval import *
 from .code.pref_code.SQLR2PreferenceRetrieval import *
+from .code.pref_code.DeprecatedCodeRAGRetrieval import *
+from .code.pref_code.SvenCodeRetrieval import *

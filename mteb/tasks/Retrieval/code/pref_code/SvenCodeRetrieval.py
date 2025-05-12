@@ -5,6 +5,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+import pandas as pd
 
 def load_jsonl(filepath):
     data = []
@@ -15,10 +16,10 @@ def load_jsonl(filepath):
     return data
 
 
-class SQLR2PreferenceRetrieval(AbsTaskRetrieval):
+class SvenCodeRetrieval(AbsTaskRetrieval):
     _EVAL_SPLIT = "test"
     metadata = TaskMetadata(
-        name="SQLR2PreferenceRetrieval",
+        name="SvenCodeRetrieval",
         description="The dataset is derived from CodeNet to benchmark retrievers' performance on cvefixed.",
         reference="https://huggingface.co/datasets/code_search_net/",
         dataset={
@@ -29,7 +30,7 @@ class SQLR2PreferenceRetrieval(AbsTaskRetrieval):
         category="p2p",
         modalities=["text"],
         eval_splits=[_EVAL_SPLIT],
-        eval_langs=["eng-Latn", "sql-Code"],
+        eval_langs=["eng-Latn", "python-Code"],
         main_score="ndcg_at_10",
         date=("2019-01-01", "2019-12-31"),
         domains=["Programming", "Written"],
@@ -63,42 +64,33 @@ class SQLR2PreferenceRetrieval(AbsTaskRetrieval):
         if not os.path.exists(DATASET_DIR):
             raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        SQLR2_DIR = os.path.join(DATASET_DIR, 'sqlr2')
-        corpus_sqlr2_file = os.path.join(SQLR2_DIR, 'corpus.jsonl')
-        qrels_sqlr2_file = os.path.join(SQLR2_DIR, 'qrels.jsonl')
-        query_sqlr2_file = os.path.join(SQLR2_DIR, 'query.jsonl')
+        SAFECODE_DIR = os.path.join(DATASET_DIR, 'sven')
+        corpus_safecode_file = os.path.join(SAFECODE_DIR, 'sven_corpus.jsonl')
+        query_safecode_file = os.path.join(SAFECODE_DIR, 'sven_query.xlsx')
 
-        corpus_sqlr2_lines = load_jsonl(corpus_sqlr2_file)
-        qrels_sqlr2_lines = load_jsonl(qrels_sqlr2_file)
-        query_sqlr2_lines = load_jsonl(query_sqlr2_file)
-
-        # convert query_sqlr2_lines to dict
-        query_sqlr2_dict = {_line['query-id']: _line for _line in query_sqlr2_lines}
+        corpus_safecode_lines = load_jsonl(corpus_safecode_file)
+        query_df = pd.read_excel(query_safecode_file)
+        query_lines = query_df.to_dict(orient='records')
 
         self.queries = {self._EVAL_SPLIT: {}}
         self.corpus = {self._EVAL_SPLIT: {}}
         self.relevant_docs = {self._EVAL_SPLIT: {}}
 
         # insert corpus
-        for _line in tqdm(corpus_sqlr2_lines):
+        for _line in tqdm(corpus_safecode_lines):
             _doc_id = _line['doc-id']
             self.corpus[self._EVAL_SPLIT][_doc_id] = {
-                "title": str(_line.get('title', '')).lower(),
-                "text": str(_line['text']).lower()
+                "title": _line.get('title', ''),
+                "text": _line['text']
             }
         # insert queries and relevant docs
-        for _line in tqdm(qrels_sqlr2_lines):
-            qid = _line['qid']
-            pos_doc_ids = _line['pos-docids']
-
-            for pos_doc_id in pos_doc_ids:
-                # insert query
-                # insert relevant docs
-                if qid not in self.queries[self._EVAL_SPLIT]:
-                    self.queries[self._EVAL_SPLIT][qid] = query_sqlr2_dict[qid]['text']
+        for _line in tqdm(query_lines):
+            qid = _line['scenario']
                 
-                if qid not in self.relevant_docs[self._EVAL_SPLIT]:
-                    self.relevant_docs[self._EVAL_SPLIT][qid] = {}
-                self.relevant_docs[self._EVAL_SPLIT][qid][pos_doc_id] = 1
-
+            if qid not in self.queries[self._EVAL_SPLIT]:
+                self.queries[self._EVAL_SPLIT][qid] = _line['queries']
+                
+            if qid not in self.relevant_docs[self._EVAL_SPLIT]:
+                self.relevant_docs[self._EVAL_SPLIT][qid] = {}
+    
         self.data_loaded = True

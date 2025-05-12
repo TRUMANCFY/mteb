@@ -59,7 +59,11 @@ class Defects4JPreferenceRetrieval(AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = '/storage/ukp/work/cai_e/LLM-Retriever-pretraining/notebooks/tmp2_safecoder/datasets'
+        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+
+        if not os.path.exists(DATASET_DIR):
+            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+
         DEFECTS4J_DIR = os.path.join(DATASET_DIR, 'Defects4J')
         corpus_defects4j_file = os.path.join(DEFECTS4J_DIR, 'corpus.jsonl')
         qrels_defects4j_file = os.path.join(DEFECTS4J_DIR, 'qrels.jsonl')
