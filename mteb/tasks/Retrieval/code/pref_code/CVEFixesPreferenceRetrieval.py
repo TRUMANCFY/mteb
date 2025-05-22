@@ -6,6 +6,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -137,22 +138,31 @@ class CVEFixesPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        CVEFIXES_DIR = os.path.join(DATASET_DIR, 'CVEFixes')
-        corpus_cvefixes_file = os.path.join(CVEFIXES_DIR, 'corpus.jsonl')
-        qrels_cvefixes_file = os.path.join(CVEFIXES_DIR, 'qrels.jsonl')
-        query_cvefixes_file = os.path.join(CVEFIXES_DIR, 'query.jsonl')
+        # CVEFIXES_DIR = os.path.join(DATASET_DIR, 'CVEFixes')
+        # corpus_cvefixes_file = os.path.join(CVEFIXES_DIR, 'corpus.jsonl')
+        # qrels_cvefixes_file = os.path.join(CVEFIXES_DIR, 'qrels.jsonl')
+        # query_cvefixes_file = os.path.join(CVEFIXES_DIR, 'query.jsonl')
 
-        corpus_cvefixes_lines = load_jsonl(corpus_cvefixes_file)
-        qrels_cvefixes_lines = load_jsonl(qrels_cvefixes_file)
-        query_cvefixes_lines = load_jsonl(query_cvefixes_file)
+        # corpus_cvefixes_lines = load_jsonl(corpus_cvefixes_file)
+        # qrels_cvefixes_lines = load_jsonl(qrels_cvefixes_file)
+        # query_cvefixes_lines = load_jsonl(query_cvefixes_file)
+        
+        dataset = load_dataset("CoQuIR/CVEFixes")
+        qrels_cvefixes_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/CVEFixes", "corpus")
+        corpus_cvefixes_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/CVEFixes", "query")
+        query_cvefixes_lines = list(query['query'])
 
         # convert query_cvefixes_lines to dict
-        query_cvefixes_dict = {_line['query-id']: _line for _line in query_cvefixes_lines}
+        query_cvefixes_dict = {_line['id']: _line for _line in query_cvefixes_lines}
 
         # queries[lang][split][query_id] = text
         self.queries = {}
@@ -168,7 +178,7 @@ class CVEFixesPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
                 self.corpus[_lang] = {self._EVAL_SPLIT: {}}
                 self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
 
-            _doc_id = _line['doc-id']
+            _doc_id = _line['id']
             self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
                 "title": str(_line.get('title', '')),
                 "text": str(_line['text'])

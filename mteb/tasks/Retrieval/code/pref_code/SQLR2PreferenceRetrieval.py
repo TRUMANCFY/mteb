@@ -5,6 +5,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -58,22 +59,31 @@ class SQLR2PreferenceRetrieval(AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        SQLR2_DIR = os.path.join(DATASET_DIR, 'sqlr2')
-        corpus_sqlr2_file = os.path.join(SQLR2_DIR, 'corpus.jsonl')
-        qrels_sqlr2_file = os.path.join(SQLR2_DIR, 'qrels.jsonl')
-        query_sqlr2_file = os.path.join(SQLR2_DIR, 'query.jsonl')
+        # SQLR2_DIR = os.path.join(DATASET_DIR, 'sqlr2')
+        # corpus_sqlr2_file = os.path.join(SQLR2_DIR, 'corpus.jsonl')
+        # qrels_sqlr2_file = os.path.join(SQLR2_DIR, 'qrels.jsonl')
+        # query_sqlr2_file = os.path.join(SQLR2_DIR, 'query.jsonl')
 
-        corpus_sqlr2_lines = load_jsonl(corpus_sqlr2_file)
-        qrels_sqlr2_lines = load_jsonl(qrels_sqlr2_file)
-        query_sqlr2_lines = load_jsonl(query_sqlr2_file)
+        # corpus_sqlr2_lines = load_jsonl(corpus_sqlr2_file)
+        # qrels_sqlr2_lines = load_jsonl(qrels_sqlr2_file)
+        # query_sqlr2_lines = load_jsonl(query_sqlr2_file)
+
+        dataset = load_dataset("CoQuIR/SQLR2")
+        qrels_sqlr2_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/SQLR2", "corpus")
+        corpus_sqlr2_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/SQLR2", "query")
+        query_sqlr2_lines = list(query['query'])
 
         # convert query_sqlr2_lines to dict
-        query_sqlr2_dict = {_line['query-id']: _line for _line in query_sqlr2_lines}
+        query_sqlr2_dict = {_line['id']: _line for _line in query_sqlr2_lines}
 
         self.queries = {self._EVAL_SPLIT: {}}
         self.corpus = {self._EVAL_SPLIT: {}}
@@ -81,7 +91,7 @@ class SQLR2PreferenceRetrieval(AbsTaskRetrieval):
 
         # insert corpus
         for _line in tqdm(corpus_sqlr2_lines):
-            _doc_id = _line['doc-id']
+            _doc_id = _line['id']
             self.corpus[self._EVAL_SPLIT][_doc_id] = {
                 "title": str(_line.get('title', '')).lower(),
                 "text": str(_line['text']).lower()

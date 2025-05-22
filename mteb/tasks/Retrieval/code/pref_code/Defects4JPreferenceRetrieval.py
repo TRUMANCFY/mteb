@@ -5,6 +5,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -59,22 +60,31 @@ class Defects4JPreferenceRetrieval(AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        DEFECTS4J_DIR = os.path.join(DATASET_DIR, 'Defects4J')
-        corpus_defects4j_file = os.path.join(DEFECTS4J_DIR, 'corpus.jsonl')
-        qrels_defects4j_file = os.path.join(DEFECTS4J_DIR, 'qrels.jsonl')
-        query_defects4j_file = os.path.join(DEFECTS4J_DIR, 'query.jsonl')
+        # DEFECTS4J_DIR = os.path.join(DATASET_DIR, 'Defects4J')
+        # corpus_defects4j_file = os.path.join(DEFECTS4J_DIR, 'corpus.jsonl')
+        # qrels_defects4j_file = os.path.join(DEFECTS4J_DIR, 'qrels.jsonl')
+        # query_defects4j_file = os.path.join(DEFECTS4J_DIR, 'query.jsonl')
 
-        corpus_defects4j_lines = load_jsonl(corpus_defects4j_file)
-        qrels_defects4j_lines = load_jsonl(qrels_defects4j_file)
-        query_defects4j_lines = load_jsonl(query_defects4j_file)
+        # corpus_defects4j_lines = load_jsonl(corpus_defects4j_file)
+        # qrels_defects4j_lines = load_jsonl(qrels_defects4j_file)
+        # query_defects4j_lines = load_jsonl(query_defects4j_file)
+
+        dataset = load_dataset("CoQuIR/Defects4J")
+        qrels_defects4j_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/Defects4J", "corpus")
+        corpus_defects4j_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/Defects4J", "query")
+        query_defects4j_lines = list(query['query'])
 
         # convert query_defects_lines to dict
-        query_defects4j_dict = {_line['query-id']: _line for _line in query_defects4j_lines}
+        query_defects4j_dict = {_line['id']: _line for _line in query_defects4j_lines}
 
         self.queries = {self._EVAL_SPLIT: {}}
         self.corpus = {self._EVAL_SPLIT: {}}
@@ -82,7 +92,7 @@ class Defects4JPreferenceRetrieval(AbsTaskRetrieval):
 
         # insert corpus
         for _line in tqdm(corpus_defects4j_lines):
-            _doc_id = _line['doc-id']
+            _doc_id = _line['id']
             self.corpus[self._EVAL_SPLIT][_doc_id] = {
                 "title": str(_line.get('title', '')),
                 "text": str(_line['text'])

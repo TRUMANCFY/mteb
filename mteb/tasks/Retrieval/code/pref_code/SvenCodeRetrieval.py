@@ -59,18 +59,18 @@ class SvenCodeRetrieval(AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        SAFECODE_DIR = os.path.join(DATASET_DIR, 'sven')
-        corpus_safecode_file = os.path.join(SAFECODE_DIR, 'sven_corpus.jsonl')
-        query_safecode_file = os.path.join(SAFECODE_DIR, 'sven_query.xlsx')
+        # SAFECODE_DIR = os.path.join(DATASET_DIR, 'sven')
+        # corpus_safecode_file = os.path.join(SAFECODE_DIR, 'sven_corpus.jsonl')
+        # query_safecode_file = os.path.join(SAFECODE_DIR, 'sven_query.xlsx')
 
-        corpus_safecode_lines = load_jsonl(corpus_safecode_file)
-        query_df = pd.read_excel(query_safecode_file)
-        query_lines = query_df.to_dict(orient='records')
+        # corpus_safecode_lines = load_jsonl(corpus_safecode_file)
+        # query_df = pd.read_excel(query_safecode_file)
+        # query_lines = query_df.to_dict(orient='records')
 
         self.queries = {self._EVAL_SPLIT: {}}
         self.corpus = {self._EVAL_SPLIT: {}}

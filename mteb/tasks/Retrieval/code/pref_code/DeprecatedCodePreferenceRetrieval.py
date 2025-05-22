@@ -6,6 +6,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -113,55 +114,101 @@ class DeprecatedCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        DEPRECATEDCODE_DIR = os.path.join(DATASET_DIR, 'DeprecatedCode')
-        
-        # queries[lang][split][query_id] = text
-        self.queries = {}
-        # corpus[lang][split][doc_id] = {"title": doc_title, "text": doc_text}
-        self.corpus = {}
-        self.relevant_docs = {}
-        
-        for _lang in _LANGS:
-            self.queries[_lang] = {self._EVAL_SPLIT: {}}
-            self.corpus[_lang] = {self._EVAL_SPLIT: {}}
-            self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
+        # DEPRECATEDCODE_DIR = os.path.join(DATASET_DIR, 'DeprecatedCode')
+
+        dataset = load_dataset("CoQuIR/DepreAPI")
+        qrels_deprecated_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/DepreAPI", "corpus")
+        corpus_deprecated_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/DepreAPI", "query")
+        query_deprecated_lines = list(query['query'])
+
+        query_deprecated_dict = {_line['id']: _line for _line in query_deprecated_lines}
+
+
+        self.queries = {self._EVAL_SPLIT: {}}
+        self.corpus = {self._EVAL_SPLIT: {}}
+        self.relevant_docs = {self._EVAL_SPLIT: {}}
+
+        for _line in tqdm(corpus_deprecated_lines):
+            _lang = get_lang(_line['id'])
+            assert _lang in _LANGS, f"Language {_lang} not supported. Supported languages are: {_LANGS}"
+            if _lang not in self.queries:
+                self.queries[_lang] = {self._EVAL_SPLIT: {}}
+                self.corpus[_lang] = {self._EVAL_SPLIT: {}}
+                self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
             
-            corpus_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'corpus-{_lang}.jsonl')
-            qrels_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'qrels-{_lang}.jsonl')
-            query_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'query-{_lang}.jsonl')
+            _doc_id = _line['id']
+            self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
+                "title": str(_line.get('title', '')),
+                "text": str(_line['text'])
+            }
 
-            corpus_deprecated_lines = load_jsonl(corpus_deprecated_file)
-            qrels_deprecated_lines = load_jsonl(qrels_deprecated_file)
-            query_deprecated_lines = load_jsonl(query_deprecated_file)
+        # insert queries and relevant docs
+        for _line in tqdm(qrels_deprecated_lines):
+            qid = _line['qid']
+            pos_doc_ids = _line['pos-docids']
 
-            # convert query_bug_lines to dict
-            query_deprecated_dict = {_line['query-id']: _line for _line in query_deprecated_lines}
-
-            for _line in tqdm(corpus_deprecated_lines):
-                _doc_id = _line['doc-id']
-                self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
-                    "title": str(_line.get('title', '')),
-                    "text": str(_line['text'])
-                }
-
-            # insert queries and relevant docs
-            for _line in tqdm(qrels_deprecated_lines):
-                qid = _line['qid']
-                pos_doc_ids = _line['pos-docids']
-
-                for pos_doc_id in pos_doc_ids:
-                    # insert query
-                    # insert relevant docs
-                    if qid not in self.queries[_lang][self._EVAL_SPLIT]:
-                        self.queries[_lang][self._EVAL_SPLIT][qid] = str(query_deprecated_dict[qid]['text'])
-                
-                    if qid not in self.relevant_docs[_lang][self._EVAL_SPLIT]:
-                        self.relevant_docs[_lang][self._EVAL_SPLIT][qid] = {}
-                    self.relevant_docs[_lang][self._EVAL_SPLIT][qid][pos_doc_id] = 1
-
+            for pos_doc_id in pos_doc_ids:
+                _lang = get_lang(pos_doc_id)
+                # insert query
+                # insert relevant docs
+                if qid not in self.queries[_lang][self._EVAL_SPLIT]:
+                    self.queries[_lang][self._EVAL_SPLIT][qid] = str(query_deprecated_dict[qid]['text'])
+            
+                if qid not in self.relevant_docs[_lang][self._EVAL_SPLIT]:
+                    self.relevant_docs[_lang][self._EVAL_SPLIT][qid] = {}
+                self.relevant_docs[_lang][self._EVAL_SPLIT][qid][pos_doc_id] = 1
+        
         self.data_loaded = True
+
+
+
+        
+        
+        # for _lang in _LANGS:
+        #     self.queries[_lang] = {self._EVAL_SPLIT: {}}
+        #     self.corpus[_lang] = {self._EVAL_SPLIT: {}}
+        #     self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
+            
+        #     corpus_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'corpus-{_lang}.jsonl')
+        #     qrels_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'qrels-{_lang}.jsonl')
+        #     query_deprecated_file = os.path.join(DEPRECATEDCODE_DIR, f'query-{_lang}.jsonl')
+
+        #     corpus_deprecated_lines = load_jsonl(corpus_deprecated_file)
+        #     qrels_deprecated_lines = load_jsonl(qrels_deprecated_file)
+        #     query_deprecated_lines = load_jsonl(query_deprecated_file)
+
+        #     # convert query_bug_lines to dict
+        #     query_deprecated_dict = {_line['query-id']: _line for _line in query_deprecated_lines}
+
+        #     for _line in tqdm(corpus_deprecated_lines):
+        #         _doc_id = _line['doc-id']
+        #         self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
+        #             "title": str(_line.get('title', '')),
+        #             "text": str(_line['text'])
+        #         }
+
+        #     # insert queries and relevant docs
+        #     for _line in tqdm(qrels_deprecated_lines):
+        #         qid = _line['qid']
+        #         pos_doc_ids = _line['pos-docids']
+
+        #         for pos_doc_id in pos_doc_ids:
+        #             # insert query
+        #             # insert relevant docs
+        #             if qid not in self.queries[_lang][self._EVAL_SPLIT]:
+        #                 self.queries[_lang][self._EVAL_SPLIT][qid] = str(query_deprecated_dict[qid]['text'])
+                
+        #             if qid not in self.relevant_docs[_lang][self._EVAL_SPLIT]:
+        #                 self.relevant_docs[_lang][self._EVAL_SPLIT][qid] = {}
+        #             self.relevant_docs[_lang][self._EVAL_SPLIT][qid][pos_doc_id] = 1
+
+        # self.data_loaded = True

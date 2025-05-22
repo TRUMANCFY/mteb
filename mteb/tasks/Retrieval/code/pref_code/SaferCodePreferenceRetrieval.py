@@ -6,6 +6,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -64,22 +65,31 @@ class SaferCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
             return
 
         # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        SAFECODE_DIR = os.path.join(DATASET_DIR, 'SafeCoder')
-        corpus_safecode_file = os.path.join(SAFECODE_DIR, 'corpus.jsonl')
-        qrels_safecode_file = os.path.join(SAFECODE_DIR, 'qrels.jsonl')
-        query_safecode_file = os.path.join(SAFECODE_DIR, 'query.jsonl')
+        # SAFECODE_DIR = os.path.join(DATASET_DIR, 'SafeCoder')
+        # corpus_safecode_file = os.path.join(SAFECODE_DIR, 'corpus.jsonl')
+        # qrels_safecode_file = os.path.join(SAFECODE_DIR, 'qrels.jsonl')
+        # query_safecode_file = os.path.join(SAFECODE_DIR, 'query.jsonl')
 
-        corpus_safecode_lines = load_jsonl(corpus_safecode_file)
-        qrels_safecode_lines = load_jsonl(qrels_safecode_file)
-        query_safecode_lines = load_jsonl(query_safecode_file)
+        # corpus_safecode_lines = load_jsonl(corpus_safecode_file)
+        # qrels_safecode_lines = load_jsonl(qrels_safecode_file)
+        # query_safecode_lines = load_jsonl(query_safecode_file)
+
+        dataset = load_dataset("CoQuIR/SafeCoder")
+        qrels_safecode_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/SafeCoder", "corpus")
+        corpus_safecode_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/SafeCoder", "query")
+        query_safecode_lines = list(query['query'])
 
         # convert query_safecode_lines to dict
-        query_safecode_dict = {_line['query-id']: _line for _line in query_safecode_lines}
+        query_safecode_dict = {_line['id']: _line for _line in query_safecode_lines}
 
         self.queries = {}
         self.corpus = {}
@@ -94,7 +104,7 @@ class SaferCodePreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
                 self.corpus[_lang] = {self._EVAL_SPLIT: {}}
                 self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
             
-            _doc_id = _line['doc-id']
+            _doc_id = _line['id']
             self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
                 "title": _line.get('title', ''),
                 "text": _line['text']

@@ -6,6 +6,7 @@ from mteb.abstasks.TaskMetadata import TaskMetadata
 import os
 import json
 from tqdm import tqdm
+from datasets import load_dataset
 
 def load_jsonl(filepath):
     data = []
@@ -141,23 +142,32 @@ class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
         if self.data_loaded:
             return
 
-        # read the dataset
-        DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
+        # # read the dataset
+        # DATASET_DIR = os.getenv("COQUIR_DATASET_PATH", 'datasets/')
 
-        if not os.path.exists(DATASET_DIR):
-            raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
+        # if not os.path.exists(DATASET_DIR):
+        #     raise ValueError(f"Dataset directory {DATASET_DIR} does not exist. Please set the COQUIR_DATASET_PATH environment variable.")
 
-        CODENET_DIR = os.path.join(DATASET_DIR, 'codenet_effi')
-        corpus_effi_file = os.path.join(CODENET_DIR, 'corpus.jsonl')
-        qrels_effi_file = os.path.join(CODENET_DIR, 'qrels.jsonl')
-        query_effi_file = os.path.join(CODENET_DIR, 'query.jsonl')
+        # CODENET_DIR = os.path.join(DATASET_DIR, 'codenet_effi')
+        # corpus_effi_file = os.path.join(CODENET_DIR, 'corpus.jsonl')
+        # qrels_effi_file = os.path.join(CODENET_DIR, 'qrels.jsonl')
+        # query_effi_file = os.path.join(CODENET_DIR, 'query.jsonl')
 
-        corpus_effi_lines = load_jsonl(corpus_effi_file)
-        qrels_effi_lines = load_jsonl(qrels_effi_file)
-        query_effi_lines = load_jsonl(query_effi_file)
+        # corpus_effi_lines = load_jsonl(corpus_effi_file)
+        # qrels_effi_lines = load_jsonl(qrels_effi_file)
+        # query_effi_lines = load_jsonl(query_effi_file)
+
+        dataset = load_dataset("CoQuIR/CodeNet-E")
+        qrels_effi_lines = list(dataset['test'])
+
+        corpus = load_dataset("CoQuIR/CodeNet-E", "corpus")
+        corpus_effi_lines = list(corpus['corpus'])
+
+        query = load_dataset("CoQuIR/CodeNet-E", "query")
+        query_effi_lines = list(query['query'])
 
         # convert query_effi_lines to dict
-        query_effi_dict = {_line['query-id']: _line for _line in query_effi_lines}
+        query_effi_dict = {_line['id']: _line for _line in query_effi_lines}
 
         # queries[lang][split][query_id] = text
         self.queries = {}
@@ -173,7 +183,7 @@ class CodeNetEfficiencyPreferenceRetrieval(MultilingualTask, AbsTaskRetrieval):
                 self.corpus[_lang] = {self._EVAL_SPLIT: {}}
                 self.relevant_docs[_lang] = {self._EVAL_SPLIT: {}}
 
-            _doc_id = _line['doc-id']
+            _doc_id = _line['id']
             self.corpus[_lang][self._EVAL_SPLIT][_doc_id] = {
                 "title": str(_line.get('title', '')),
                 "text": str(_line['text'])
