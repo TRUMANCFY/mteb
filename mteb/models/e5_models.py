@@ -227,3 +227,30 @@ e5_eng_large_v2 = ModelMeta(
     revision="b322e09026e4ea05f42beadf4d661fb4e101d311",
     release_date=E5_PAPER_RELEASE_DATE,
 )
+
+e5_eng_small_unsupervised = ModelMeta(
+    loader=partial(E5Wrapper, model_name="intfloat/e5-small-unsupervised"),  # type: ignore
+    name="intfloat/e5-small-unsupervised",
+    languages=["eng_Latn"],
+    open_source=True,
+    revision="eca89c98d735c822e7fa61db277620d59cf17427",
+    release_date=E5_PAPER_RELEASE_DATE,
+)
+
+e5_eng_base_unsupervised = ModelMeta(
+    loader=partial(E5Wrapper, model_name="intfloat/e5-base-unsupervised"),  # type: ignore
+    name="intfloat/e5-base-unsupervised",
+    languages=["eng_Latn"],
+    open_source=True,
+    revision="6003a5b7ce770b0549203e41115b9fc683f16dad",
+    release_date=E5_PAPER_RELEASE_DATE,
+)
+
+e5_eng_large_unsupervised = ModelMeta(
+    loader=partial(E5Wrapper, model_name="intfloat/e5-large-unsupervised"),  # type: ignore
+    name="intfloat/e5-large-unsupervised",
+    languages=["eng_Latn"],
+    open_source=True,
+    revision="04ff6cbf6cc216ec30d6737c12b6d2b681ef97aa",
+    release_date=E5_PAPER_RELEASE_DATE,
+)
