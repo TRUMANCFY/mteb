@@ -12,7 +12,7 @@ from transformers import AutoModel, AutoTokenizer
 from peft import PeftModel
 import torch.multiprocessing as mp
 import queue
-
+import os
 from mteb.encoder_interface import Encoder
 from mteb.model_meta import ModelMeta
 from mteb.models.text_formatting_utils import corpus_to_texts
@@ -34,6 +34,10 @@ class RepLLaMAWrapper:
         self.pool = None  # Will store multi-process pool if multiple GPUs
         self.tokenizer = None
         self.model = None
+
+        self.max_length = int(os.getenv("REPLLAMA_MAX_LENGTH", 2048))
+
+        print("max_length:", self.max_length)
 
         num_gpus = torch.cuda.device_count()
         print(f"Number of GPUs: {num_gpus}")
@@ -59,8 +63,8 @@ class RepLLaMAWrapper:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.tokenizer.padding_side = "right"
 
-            self.model.config.max_length = 512
-            self.tokenizer.model_max_length = 512
+            self.model.config.max_length = self.max_length
+            self.tokenizer.model_max_length = self.max_length
         else:
             # For multiple GPUs, we create our multi-process pool once
             self.pool = self.start_multi_process_pool()
@@ -134,6 +138,7 @@ class RepLLaMAWrapper:
         torch_dtype: torch.dtype,
         input_queue: mp.Queue,
         results_queue: mp.Queue,
+        tok_max_length: int = 2048,
     ) -> None:
         """
         Each worker loads its own model and tokenizer, then reads from input_queue,
@@ -157,8 +162,8 @@ class RepLLaMAWrapper:
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "right"
         
-        model.config.max_length = 512
-        tokenizer.model_max_length = 512
+        model.config.max_length = tok_max_length
+        tokenizer.model_max_length = tok_max_length
 
         def create_batch_dict(input_texts):
             max_length = model.config.max_length
@@ -248,6 +253,7 @@ class RepLLaMAWrapper:
                     self.torch_dtype,
                     input_queue,
                     output_queue,
+                    self.max_length,
                 ),
                 daemon=True,
             )
@@ -394,8 +400,8 @@ class RepLLaMAWrapper:
 #         self.tokenizer.pad_token = self.tokenizer.eos_token
 #         self.tokenizer.padding_side = "right"
 #         # set the max_length for the evals as they did, although the model can handle longer
-#         self.model.config.max_length = 512
-#         self.tokenizer.model_max_length = 512
+#         self.model.config.max_length = 2048
+#         self.tokenizer.model_max_length = 2048
 
 #         print(self.model.layers[0].mlp.gate_proj.weight.sum())
 
