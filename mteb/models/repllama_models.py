@@ -152,7 +152,7 @@ class RepLLaMAWrapper:
         ).to(device)
 
         if peft_model_name_or_path is not None:
-            model = PeftModel.from_pretrained(base_model, peft_model_name_or_path)
+            model = PeftModel.from_pretrained(base_model, peft_model_name_or_path, torch_dtype=torch_dtype)
             model = model.merge_and_unload()
         else:
             model = base_model
